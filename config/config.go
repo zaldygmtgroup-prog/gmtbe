@@ -77,9 +77,21 @@ func Load() Config {
 
 func getEnv(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
-		return value
+		return cleanEnvValue(value)
 	}
 	return fallback
+}
+
+func cleanEnvValue(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) >= 2 {
+		first := value[0]
+		last := value[len(value)-1]
+		if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+			return value[1 : len(value)-1]
+		}
+	}
+	return value
 }
 
 func getEnvAsInt(key string, fallback int) int {
