@@ -2,6 +2,7 @@ package routes
 
 import (
 	"net/http"
+	"strings"
 
 	"begmt2/config"
 	"begmt2/controllers"
@@ -127,11 +128,14 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 func corsMiddleware(cfg config.Config) gin.HandlerFunc {
 	allowedOrigins := make(map[string]bool)
 	for _, origin := range cfg.CORSAllowedOrigins {
-		allowedOrigins[origin] = true
+		origin = normalizeCORSOrigin(origin)
+		if origin != "" {
+			allowedOrigins[origin] = true
+		}
 	}
 
 	return func(c *gin.Context) {
-		origin := c.GetHeader("Origin")
+		origin := normalizeCORSOrigin(c.GetHeader("Origin"))
 		if allowedOrigins[origin] {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Vary", "Origin")
@@ -147,4 +151,8 @@ func corsMiddleware(cfg config.Config) gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+func normalizeCORSOrigin(origin string) string {
+	return strings.TrimRight(strings.TrimSpace(origin), "/")
 }
