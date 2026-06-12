@@ -36,6 +36,7 @@ func TestGeneratePreorderPDFPreview(t *testing.T) {
 		Items: []models.PreorderItem{
 			{
 				ProductNameSnapshot:        "MOXLITE ARES",
+				ProductPhotoSnapshot:       "../kop_surat.png",
 				ProductDescriptionSnapshot: "*380W PHILIPS MSD Silver 380/2 LL lamp source with 7800K color temperature, CRI 80, and 4000-hour lifespan.\n*Pan 540° and tilt 270° with quiet and precise 3-phase motors.\n*Magnetic coding for accurate positioning.\n*Input voltage AC100-240V 50/60Hz.\n*Frost filter for hybrid wash effect.",
 				UnitSnapshot:               "Unit",
 				UnitPrice:                  16240000,
@@ -48,6 +49,7 @@ func TestGeneratePreorderPDFPreview(t *testing.T) {
 			},
 			{
 				ProductNameSnapshot:        "MOXLITE SCARLET HYBRID",
+				ProductPhotoSnapshot:       "../footer_surat.png",
 				ProductDescriptionSnapshot: "*600W LED module engine with 8500K color temperature.\n*Pan 540° and tilt 270° with quiet and precise motors.\n*Power supply 200W consumption.\n*Linear CMY color mixing system with fixed color wheel.\n*Electronic focus and prism effects.",
 				UnitSnapshot:               "Unit",
 				UnitPrice:                  32110000,

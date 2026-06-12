@@ -1,12 +1,15 @@
 package controllers
 
 import (
+	"bytes"
+	"crypto/sha1"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -789,7 +792,8 @@ func drawPreorderItemsTable(pdf *gofpdf.Fpdf, items []models.PreorderItem) {
 		if item.UnitSnapshot != "" {
 			qtyUnit = fmt.Sprintf("%d %s", item.Qty, item.UnitSnapshot)
 		}
-		afterDiscount := item.UnitPrice - int64(math.Round(float64(item.UnitPrice)*item.DiscountPercent/100))
+		unitDiscount := int64(math.Round(float64(item.UnitPrice) * item.DiscountPercent / 100))
+		afterDiscount := item.UnitPrice - unitDiscount
 		cells := []string{
 			fmt.Sprintf("%d", i+1),
 			item.ProductNameSnapshot,
@@ -797,7 +801,7 @@ func drawPreorderItemsTable(pdf *gofpdf.Fpdf, items []models.PreorderItem) {
 			"",
 			qtyUnit,
 			formatRupiah(item.UnitPrice),
-			formatRupiah(item.DiscountAmount),
+			formatRupiah(unitDiscount),
 			formatRupiah(afterDiscount),
 			formatRupiah(item.Total),
 		}
@@ -911,11 +915,77 @@ func ensurePDFSpace(pdf *gofpdf.Fpdf, needed float64, afterAddPage func()) {
 }
 
 func drawProductImage(pdf *gofpdf.Fpdf, imagePath string, x, y, maxW, maxH float64) {
+	if drawRemoteProductImage(pdf, imagePath, x, y, maxW, maxH) {
+		return
+	}
 	path, ok := resolvePDFAssetPath(imagePath)
 	if !ok {
 		return
 	}
 	pdf.ImageOptions(path, x, y, maxW, maxH, false, gofpdf.ImageOptions{}, 0, "")
+}
+
+func drawRemoteProductImage(pdf *gofpdf.Fpdf, imageURL string, x, y, maxW, maxH float64) bool {
+	parsed, err := url.Parse(strings.TrimSpace(imageURL))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return false
+	}
+
+	client := http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Get(parsed.String())
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return false
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 5<<20))
+	if err != nil || len(body) == 0 {
+		return false
+	}
+
+	imageType := imageTypeFromContentType(resp.Header.Get("Content-Type"))
+	if imageType == "" {
+		imageType = imageTypeFromPath(parsed.Path)
+	}
+	if imageType == "" {
+		imageType = "JPG"
+	}
+
+	key := fmt.Sprintf("product-%x", sha1.Sum([]byte(parsed.String())))
+	options := gofpdf.ImageOptions{ImageType: imageType}
+	pdf.RegisterImageOptionsReader(key, options, bytes.NewReader(body))
+	pdf.ImageOptions(key, x, y, maxW, maxH, false, options, 0, "")
+	return true
+}
+
+func imageTypeFromContentType(contentType string) string {
+	contentType = strings.ToLower(contentType)
+	switch {
+	case strings.Contains(contentType, "png"):
+		return "PNG"
+	case strings.Contains(contentType, "jpeg"), strings.Contains(contentType, "jpg"):
+		return "JPG"
+	case strings.Contains(contentType, "gif"):
+		return "GIF"
+	default:
+		return ""
+	}
+}
+
+func imageTypeFromPath(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".png":
+		return "PNG"
+	case ".jpg", ".jpeg":
+		return "JPG"
+	case ".gif":
+		return "GIF"
+	default:
+		return ""
+	}
 }
 
 func formatRupiah(value int64) string {
@@ -939,6 +1009,13 @@ func resolvePDFAssetPath(assetPath string) (string, bool) {
 		return "", false
 	}
 	candidates := []string{assetPath}
+	if strings.HasPrefix(assetPath, "/") || strings.HasPrefix(assetPath, "\\") {
+		trimmed := strings.TrimLeft(assetPath, `/\`)
+		candidates = append(candidates,
+			filepath.Join(".", trimmed),
+			filepath.Join("..", trimmed),
+		)
+	}
 	if !filepath.IsAbs(assetPath) {
 		candidates = append(candidates,
 			filepath.Join(".", assetPath),
