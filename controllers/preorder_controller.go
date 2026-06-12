@@ -7,6 +7,8 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -563,106 +565,7 @@ func (p PreorderController) GetPreorderPDF(c *gin.Context) {
 		}
 	}
 
-	// Create PDF
-	pdf := gofpdf.New("P", "mm", "A4", "")
-	pdf.SetMargins(10, 10, 10)
-	pdf.AddPage()
-	drawQuotationLetterhead(pdf)
-
-	// Title
-	pdf.SetFont("Arial", "B", 11)
-	pdf.SetTextColor(0, 0, 0)
-	pdf.Cell(0, 8, "QUOTATION")
-	pdf.Ln(10)
-
-	pdf.SetFont("Arial", "", 10)
-	pdf.Cell(0, 5, fmt.Sprintf("PO Number: %s", preorder.PONumber))
-	pdf.Ln(5)
-	if preorder.Agent != nil {
-		pdf.Cell(0, 5, fmt.Sprintf("Agent Name: %s", preorder.Agent.Name))
-		pdf.Ln(5)
-	}
-	pdf.Cell(0, 5, fmt.Sprintf("Date: %s", preorder.CreatedAt.Format("2006-01-02 15:04:05")))
-	pdf.Ln(5)
-	pdf.Cell(0, 5, fmt.Sprintf("Status: %s", preorder.Status))
-	pdf.Ln(5)
-	pdf.Cell(0, 5, fmt.Sprintf("Payment Status: %s", preorder.PaymentStatus))
-	pdf.Ln(5)
-	if preorder.PaymentURL != "" {
-		pdf.SetFont("Arial", "B", 10)
-		pdf.Cell(0, 5, "Official Payment Link:")
-		pdf.Ln(5)
-		pdf.SetFont("Arial", "U", 9)
-		pdf.SetTextColor(28, 75, 151)
-		pdf.WriteLinkString(5, preorder.PaymentURL, preorder.PaymentURL)
-		pdf.SetTextColor(0, 0, 0)
-		pdf.Ln(6)
-		pdf.SetFont("Arial", "", 8)
-		pdf.Cell(0, 5, "Pembayaran hanya melalui link resmi Midtrans di atas.")
-		pdf.Ln(5)
-	}
-	pdf.Ln(10)
-
-	// Customer Details
-	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(0, 8, "Customer Details")
-	pdf.Ln(8)
-	pdf.SetFont("Arial", "", 10)
-	pdf.Cell(0, 5, fmt.Sprintf("Name: %s", preorder.NamaCustomer))
-	pdf.Ln(5)
-	pdf.Cell(0, 5, fmt.Sprintf("Email: %s", preorder.Email))
-	pdf.Ln(5)
-	pdf.Cell(0, 5, fmt.Sprintf("Phone: %s", preorder.NoHP))
-	pdf.Ln(5)
-	pdf.Cell(0, 5, fmt.Sprintf("Address: %s", preorder.Alamat))
-	pdf.Ln(10)
-
-	if preorder.Catatan != "" {
-		pdf.SetFont("Arial", "B", 12)
-		pdf.Cell(0, 8, "Notes")
-		pdf.Ln(8)
-		pdf.SetFont("Arial", "", 10)
-		pdf.Cell(0, 5, preorder.Catatan)
-		pdf.Ln(10)
-	}
-
-	// Items Table Header
-	pdf.SetFont("Arial", "B", 10)
-	pdf.CellFormat(60, 8, "Product Name", "1", 0, "L", false, 0, "")
-	pdf.CellFormat(15, 8, "Qty", "1", 0, "C", false, 0, "")
-	pdf.CellFormat(30, 8, "Price", "1", 0, "R", false, 0, "")
-	pdf.CellFormat(25, 8, "Discount %", "1", 0, "C", false, 0, "")
-	pdf.CellFormat(30, 8, "Total", "1", 0, "R", false, 0, "")
-	pdf.CellFormat(30, 8, "Commission", "1", 0, "R", false, 0, "")
-	pdf.Ln(8)
-
-	// Items Table Content
-	pdf.SetFont("Arial", "", 9)
-	for _, item := range preorder.Items {
-		pdf.CellFormat(60, 8, item.ProductNameSnapshot, "1", 0, "L", false, 0, "")
-		pdf.CellFormat(15, 8, fmt.Sprintf("%d", item.Qty), "1", 0, "C", false, 0, "")
-		pdf.CellFormat(30, 8, fmt.Sprintf("%d", item.UnitPrice), "1", 0, "R", false, 0, "")
-		pdf.CellFormat(25, 8, fmt.Sprintf("%.1f%%", item.DiscountPercent), "1", 0, "C", false, 0, "")
-		pdf.CellFormat(30, 8, fmt.Sprintf("%d", item.Total), "1", 0, "R", false, 0, "")
-		pdf.CellFormat(30, 8, fmt.Sprintf("%d", item.Komisi), "1", 0, "R", false, 0, "")
-		pdf.Ln(8)
-	}
-
-	// Totals
-	pdf.Ln(5)
-	pdf.SetFont("Arial", "B", 10)
-	pdf.CellFormat(130, 8, "Subtotal", "0", 0, "R", false, 0, "")
-	pdf.CellFormat(30, 8, fmt.Sprintf("%d", preorder.Subtotal), "1", 0, "R", false, 0, "")
-	pdf.Ln(8)
-	pdf.CellFormat(130, 8, "Total Discount", "0", 0, "R", false, 0, "")
-	pdf.CellFormat(30, 8, fmt.Sprintf("%d", preorder.TotalDiscount), "1", 0, "R", false, 0, "")
-	pdf.Ln(8)
-	pdf.CellFormat(130, 8, "Total PO", "0", 0, "R", false, 0, "")
-	pdf.CellFormat(30, 8, fmt.Sprintf("%d", preorder.Total), "1", 0, "R", false, 0, "")
-	pdf.Ln(8)
-	pdf.CellFormat(130, 8, "Total Commission", "0", 0, "R", false, 0, "")
-	pdf.CellFormat(30, 8, fmt.Sprintf("%d", preorder.TotalKomisi), "1", 0, "R", false, 0, "")
-	pdf.Ln(8)
+	pdf := buildPreorderPDF(preorder)
 
 	c.Header("Content-Type", "application/pdf")
 	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=%s.pdf", preorder.PONumber))
@@ -670,6 +573,57 @@ func (p PreorderController) GetPreorderPDF(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to generate PDF", "error": err.Error()})
 	}
+}
+
+func buildPreorderPDF(preorder models.Preorder) *gofpdf.Fpdf {
+	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf.SetMargins(10, 10, 10)
+	pdf.SetAutoPageBreak(true, 20)
+	pdf.SetFooterFunc(func() {
+		drawQuotationFooter(pdf)
+	})
+	pdf.AddPage()
+	drawQuotationLetterhead(pdf)
+
+	pdf.SetFont("Arial", "B", 11)
+	pdf.SetTextColor(0, 0, 0)
+	pdf.Cell(0, 8, "QUOTATION")
+	pdf.Ln(9)
+
+	agentName := "-"
+	if preorder.Agent != nil {
+		agentName = preorder.Agent.Name
+	}
+	drawInfoRow(pdf, "PO Information", []string{
+		fmt.Sprintf("PO Number: %s", preorder.PONumber),
+		fmt.Sprintf("Agent Name: %s", agentName),
+		fmt.Sprintf("Date: %s", preorder.CreatedAt.Format("2006-01-02 15:04:05")),
+		fmt.Sprintf("Status: %s", preorder.Status),
+		fmt.Sprintf("Payment Status: %s", preorder.PaymentStatus),
+	})
+	drawInfoRow(pdf, "Customer Details", []string{
+		fmt.Sprintf("Name: %s", preorder.NamaCustomer),
+		fmt.Sprintf("Email: %s", preorder.Email),
+		fmt.Sprintf("Phone: %s", preorder.NoHP),
+		fmt.Sprintf("Address: %s", preorder.Alamat),
+	})
+	pdf.Ln(5)
+
+	if preorder.Catatan != "" {
+		pdf.SetFont("Arial", "B", 9)
+		pdf.Cell(0, 8, "Notes")
+		pdf.Ln(6)
+		pdf.SetFont("Arial", "", 8)
+		pdf.MultiCell(0, 4, preorder.Catatan, "", "L", false)
+		pdf.Ln(4)
+	}
+
+	drawPreorderItemsTable(pdf, preorder.Items)
+
+	pdf.Ln(5)
+	drawPreorderTotals(pdf, preorder)
+	drawPaymentInfo(pdf, preorder.PaymentURL)
+	return pdf
 }
 
 func (p PreorderController) CreatePreorderPaymentLink(c *gin.Context) {
@@ -790,93 +744,243 @@ func (p PreorderController) ensurePaymentLink(preorder *models.Preorder) error {
 	}).Error
 }
 
+func drawInfoRow(pdf *gofpdf.Fpdf, title string, lines []string) {
+	const usableW = 277.0
+	x := pdf.GetX()
+	y := pdf.GetY()
+	rowH := 20.0
+
+	pdf.SetDrawColor(180, 180, 180)
+	pdf.Rect(x, y, usableW, rowH, "D")
+	pdf.SetFillColor(110, 170, 70)
+	pdf.Rect(x, y, usableW, 6, "F")
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Arial", "B", 7)
+	pdf.SetXY(x+2, y+1.2)
+	pdf.Cell(0, 3.5, title)
+
+	pdf.SetFont("Arial", "", 7)
+	pdf.SetXY(x+2, y+8)
+	colW := usableW / 3
+	lineH := 4.2
+	for i, line := range lines {
+		col := i % 3
+		row := i / 3
+		pdf.SetXY(x+2+float64(col)*colW, y+8+float64(row)*lineH)
+		pdf.CellFormat(colW-4, lineH, line, "", 0, "L", false, 0, "")
+	}
+	pdf.SetXY(x, y+rowH+2)
+}
+
+func drawPreorderItemsTable(pdf *gofpdf.Fpdf, items []models.PreorderItem) {
+	widths := []float64{8, 42, 78, 28, 22, 28, 22, 25, 24}
+	headers := []string{"NO", "Model", "Deskripsi Produk", "Picture", "Quantity", "Unit Price", "Discount", "After Discount", "Total Price"}
+	aligns := []string{"C", "L", "L", "C", "C", "R", "R", "R", "R"}
+
+	drawPreorderItemsHeader(pdf, widths, headers)
+
+	pdf.SetFont("Arial", "", 6)
+	for i, item := range items {
+		description := item.ProductDescriptionSnapshot
+		if strings.TrimSpace(description) == "" {
+			description = "-"
+		}
+		qtyUnit := fmt.Sprintf("%d", item.Qty)
+		if item.UnitSnapshot != "" {
+			qtyUnit = fmt.Sprintf("%d %s", item.Qty, item.UnitSnapshot)
+		}
+		afterDiscount := item.UnitPrice - int64(math.Round(float64(item.UnitPrice)*item.DiscountPercent/100))
+		cells := []string{
+			fmt.Sprintf("%d", i+1),
+			item.ProductNameSnapshot,
+			description,
+			"",
+			qtyUnit,
+			formatRupiah(item.UnitPrice),
+			formatRupiah(item.DiscountAmount),
+			formatRupiah(afterDiscount),
+			formatRupiah(item.Total),
+		}
+
+		rowH := calculatePDFRowHeight(pdf, widths, cells, 3.4, 5)
+		ensurePDFSpace(pdf, rowH+20, func() {
+			drawPreorderItemsHeader(pdf, widths, headers)
+			pdf.SetFont("Arial", "", 6)
+		})
+
+		x := pdf.GetX()
+		y := pdf.GetY()
+		for j, cell := range cells {
+			pdf.Rect(x, y, widths[j], rowH, "D")
+			if j == 3 {
+				drawProductImage(pdf, item.ProductPhotoSnapshot, x+2, y+2, widths[j]-4, rowH-4)
+			} else {
+				pdf.SetXY(x+1, y+1.2)
+				pdf.MultiCell(widths[j]-2, 3.4, cell, "", aligns[j], false)
+			}
+			x += widths[j]
+			pdf.SetXY(x, y)
+		}
+		pdf.SetXY(10, y+rowH)
+	}
+}
+
+func drawPreorderItemsHeader(pdf *gofpdf.Fpdf, widths []float64, headers []string) {
+	ensurePDFSpace(pdf, 12, nil)
+	pdf.SetFillColor(112, 173, 71)
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Arial", "B", 6)
+	for i, header := range headers {
+		pdf.CellFormat(widths[i], 6, header, "1", 0, "C", true, 0, "")
+	}
+	pdf.Ln(6)
+}
+
+func drawPreorderTotals(pdf *gofpdf.Fpdf, preorder models.Preorder) {
+	ensurePDFSpace(pdf, 26, nil)
+	labelX := 196.0
+	valueW := 46.0
+
+	pdf.SetFont("Arial", "B", 7)
+	pdf.SetX(labelX)
+	pdf.CellFormat(35, 5, "SUBTOTAL", "", 0, "L", false, 0, "")
+	pdf.CellFormat(valueW, 5, formatRupiah(preorder.Subtotal), "B", 1, "R", false, 0, "")
+
+	pdf.SetX(labelX)
+	pdf.CellFormat(35, 5, "Discount", "", 0, "L", false, 0, "")
+	pdf.CellFormat(valueW, 5, formatRupiah(preorder.TotalDiscount), "B", 1, "R", false, 0, "")
+
+	pdf.SetX(labelX)
+	pdf.CellFormat(35, 5, "Total", "", 0, "L", false, 0, "")
+	pdf.CellFormat(valueW, 5, formatRupiah(preorder.Total), "B", 1, "R", false, 0, "")
+}
+
+func drawPaymentInfo(pdf *gofpdf.Fpdf, paymentURL string) {
+	if paymentURL == "" {
+		return
+	}
+	ensurePDFSpace(pdf, 30, nil)
+	pdf.Ln(4)
+	pdf.SetX(10)
+	pdf.SetFont("Arial", "B", 8)
+	pdf.Cell(0, 4, "Official Payment Link:")
+	pdf.Ln(5)
+	pdf.SetFont("Arial", "", 7)
+	pdf.Cell(0, 4, "Rukan Crown Blok B25, Cipondoh, Tangerang")
+	pdf.Ln(4)
+	pdf.Cell(0, 4, "+62 852-1567-6696")
+	pdf.Ln(4)
+	pdf.SetFont("Arial", "U", 7)
+	pdf.SetTextColor(28, 75, 151)
+	pdf.WriteLinkString(4, paymentURL, paymentURL)
+	pdf.SetTextColor(0, 0, 0)
+	pdf.Ln(5)
+	pdf.SetFont("Arial", "", 7)
+	pdf.Cell(0, 4, "Pembayaran hanya melalui link resmi Midtrans di atas.")
+	pdf.Ln(5)
+}
+
+func calculatePDFRowHeight(pdf *gofpdf.Fpdf, widths []float64, cells []string, lineH float64, minH float64) float64 {
+	maxLines := 1
+	for i, cell := range cells {
+		if i == 3 {
+			continue
+		}
+		lines := pdf.SplitLines([]byte(cell), widths[i]-2)
+		if len(lines) > maxLines {
+			maxLines = len(lines)
+		}
+	}
+	height := float64(maxLines)*lineH + 2.4
+	if height < minH {
+		return minH
+	}
+	return height
+}
+
+func ensurePDFSpace(pdf *gofpdf.Fpdf, needed float64, afterAddPage func()) {
+	_, pageH := pdf.GetPageSize()
+	_, _, _, bottom := pdf.GetMargins()
+	if pdf.GetY()+needed > pageH-bottom-14 {
+		pdf.AddPage()
+		drawQuotationLetterhead(pdf)
+		if afterAddPage != nil {
+			afterAddPage()
+		}
+	}
+}
+
+func drawProductImage(pdf *gofpdf.Fpdf, imagePath string, x, y, maxW, maxH float64) {
+	path, ok := resolvePDFAssetPath(imagePath)
+	if !ok {
+		return
+	}
+	pdf.ImageOptions(path, x, y, maxW, maxH, false, gofpdf.ImageOptions{}, 0, "")
+}
+
+func formatRupiah(value int64) string {
+	sign := ""
+	if value < 0 {
+		sign = "-"
+		value = -value
+	}
+	raw := strconv.FormatInt(value, 10)
+	var parts []string
+	for len(raw) > 3 {
+		parts = append([]string{raw[len(raw)-3:]}, parts...)
+		raw = raw[:len(raw)-3]
+	}
+	parts = append([]string{raw}, parts...)
+	return fmt.Sprintf("%sRp %s", sign, strings.Join(parts, "."))
+}
+
+func resolvePDFAssetPath(assetPath string) (string, bool) {
+	if strings.TrimSpace(assetPath) == "" {
+		return "", false
+	}
+	candidates := []string{assetPath}
+	if !filepath.IsAbs(assetPath) {
+		candidates = append(candidates,
+			filepath.Join(".", assetPath),
+			filepath.Join("..", assetPath),
+		)
+	}
+	for _, candidate := range candidates {
+		abs, err := filepath.Abs(candidate)
+		if err != nil {
+			continue
+		}
+		if info, err := os.Stat(abs); err == nil && !info.IsDir() {
+			return abs, true
+		}
+	}
+	return "", false
+}
+
 func drawQuotationLetterhead(pdf *gofpdf.Fpdf) {
 	const (
-		pageW   = 210.0
-		headerH = 48.0
+		pageW   = 297.0
+		headerH = 69.4
 	)
 
-	pdf.SetAutoPageBreak(true, 12)
-	pdf.SetFillColor(244, 248, 235)
-	pdf.Rect(0, 0, pageW, headerH, "F")
-
-	// Layered right-side bands approximate the supplied GMT letterhead image.
-	bands := []struct {
-		x       float64
-		r, g, b int
-	}{
-		{70, 190, 216, 91},
-		{92, 159, 197, 77},
-		{114, 118, 170, 95},
-		{136, 78, 142, 123},
-		{158, 52, 102, 153},
-		{180, 42, 70, 143},
+	if path, ok := resolvePDFAssetPath("kop_surat.png"); ok {
+		pdf.ImageOptions(path, 0, 0, pageW, headerH, false, gofpdf.ImageOptions{ImageType: "PNG"}, 0, "")
 	}
-	for _, band := range bands {
-		pdf.SetFillColor(band.r, band.g, band.b)
-		pdf.Polygon([]gofpdf.PointType{
-			{X: band.x, Y: 0},
-			{X: band.x + 36, Y: 0},
-			{X: band.x + 7, Y: headerH},
-			{X: band.x - 29, Y: headerH},
-		}, "F")
-	}
-
-	pdf.SetFillColor(255, 255, 255)
-	pdf.Polygon([]gofpdf.PointType{
-		{X: 0, Y: 45},
-		{X: 64, Y: 45},
-		{X: 84, Y: 42},
-		{X: 101, Y: 34},
-		{X: 118, Y: 25},
-		{X: 140, Y: 20},
-		{X: 210, Y: 20},
-		{X: 210, Y: 30},
-		{X: 140, Y: 30},
-		{X: 119, Y: 34},
-		{X: 101, Y: 43},
-		{X: 85, Y: 51},
-		{X: 0, Y: 51},
-	}, "F")
-
-	// Logo mark.
-	pdf.SetDrawColor(31, 94, 139)
-	pdf.SetLineWidth(0.7)
-	for i := 0; i < 12; i++ {
-		x := 17.0 + float64(i)*2.1
-		pdf.Line(x, 29, x+18, 7)
-	}
-	pdf.SetDrawColor(114, 184, 67)
-	for i := 0; i < 10; i++ {
-		x := 12.0 + float64(i)*2.2
-		pdf.Line(x, 31, x+18, 9)
-	}
-	pdf.SetDrawColor(255, 255, 255)
-	pdf.SetLineWidth(2.2)
-	pdf.Circle(26, 24, 13.5, "D")
-
-	pdf.SetTextColor(28, 75, 151)
-	pdf.SetFont("Arial", "", 29)
-	pdf.Text(45, 27, "gmt")
-	pdf.SetFont("Arial", "", 5.2)
-	pdf.Text(45.5, 36, "GLOBAL MULTIPRO TECHNOLOGY")
-
-	pdf.SetTextColor(255, 255, 255)
-	pdf.SetDrawColor(255, 255, 255)
-	pdf.SetLineWidth(0.35)
-	pdf.Circle(116, 32, 2.4, "D")
-	pdf.SetFont("Arial", "B", 7.5)
-	pdf.Text(121, 33.7, "Rukan Crown Blok B25, Cipondoh, Tangerang")
-	pdf.SetFont("Arial", "", 5)
-	pdf.Text(115.2, 33.5, "o")
-
-	pdf.Circle(116, 40, 2.4, "D")
-	pdf.SetFont("Arial", "B", 7.5)
-	pdf.Text(121, 41.7, "+62 852-1567-6696")
-	pdf.SetFont("Arial", "", 5)
-	pdf.Text(114.7, 41.7, "c")
 
 	pdf.SetY(headerH)
+}
+
+func drawQuotationFooter(pdf *gofpdf.Fpdf) {
+	const (
+		pageW   = 297.0
+		footerH = 14.4
+	)
+	path, ok := resolvePDFAssetPath("footer_surat.png")
+	if !ok {
+		return
+	}
+	_, pageH := pdf.GetPageSize()
+	pdf.ImageOptions(path, 0, pageH-footerH, pageW, footerH, false, gofpdf.ImageOptions{ImageType: "PNG"}, 0, "")
 }
 
 func (p PreorderController) notifySales(tx *gorm.DB, preorder models.Preorder) error {

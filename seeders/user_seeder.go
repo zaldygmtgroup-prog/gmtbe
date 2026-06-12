@@ -41,15 +41,21 @@ func SeedDefaultUsers(db *gorm.DB, cfg config.Config) {
 }
 
 func seedDefaultUser(db *gorm.DB, data defaultUser) error {
-	var existingUser models.User
-	if err := db.Where("email = ?", data.Email).First(&existingUser).Error; err == nil {
-		return nil
-	} else if err != gorm.ErrRecordNotFound {
+	hashedPassword, err := utils.HashPassword(data.Password)
+	if err != nil {
 		return err
 	}
 
-	hashedPassword, err := utils.HashPassword(data.Password)
-	if err != nil {
+	var existingUser models.User
+	if err := db.Where("email = ?", data.Email).First(&existingUser).Error; err == nil {
+		updates := map[string]interface{}{
+			"name":     data.Name,
+			"password": hashedPassword,
+			"role":     data.Role,
+		}
+
+		return db.Model(&existingUser).Updates(updates).Error
+	} else if err != gorm.ErrRecordNotFound {
 		return err
 	}
 
