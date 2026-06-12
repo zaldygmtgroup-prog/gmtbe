@@ -1,0 +1,7 @@
+ALTER TABLE detail_users
+  ADD COLUMN photo VARCHAR(255) NULL,
+  ADD COLUMN ktp_photo VARCHAR(255) NULL,
+  ADD COLUMN full_address TEXT NULL,
+  ADD COLUMN bank_name VARCHAR(120) NULL,
+  ADD COLUMN account_number VARCHAR(80) NULL,
+  ADD COLUMN status VARCHAR(50) NULL;

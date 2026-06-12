@@ -1,0 +1,6 @@
+.env
+*.exe
+*.test
+server-test.out.log
+tmp/
+vendor/
