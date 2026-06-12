@@ -9,6 +9,10 @@ import (
 )
 
 func ConnectDatabase(cfg Config) *gorm.DB {
+	if dsn, ok := MySQLDSNFromURL(cfg.DatabaseURL); ok {
+		return openMySQL(dsn)
+	}
+
 	dsn := fmt.Sprintf(
 		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		cfg.DBUser,
@@ -18,6 +22,10 @@ func ConnectDatabase(cfg Config) *gorm.DB {
 		cfg.DBName,
 	)
 
+	return openMySQL(dsn)
+}
+
+func openMySQL(dsn string) *gorm.DB {
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 		DisableForeignKeyConstraintWhenMigrating: true,
 	})

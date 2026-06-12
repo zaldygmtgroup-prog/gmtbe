@@ -83,7 +83,9 @@ MIDTRANS_SERVER_KEY=your-sandbox-server-key
 
 Jika backend dan MySQL berada dalam project Railway yang sama, aplikasi juga bisa membaca variable MySQL bawaan Railway:
 `MYSQLHOST`, `MYSQLPORT`, `MYSQLUSER`, `MYSQLPASSWORD`, dan `MYSQLDATABASE`.
+Format underscore seperti `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, dan `MYSQL_DATABASE` juga didukung.
 Kalau kamu memakai database eksternal, isi variable `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, dan `DB_NAME`.
+Aplikasi juga bisa membaca `DATABASE_URL`, `MYSQL_URL`, atau `MYSQL_PUBLIC_URL` dengan format `mysql://user:password@host:port/database`.
 
 ## Endpoint
 
