@@ -12,6 +12,7 @@ import (
 type Config struct {
 	AppPort                  string
 	AppEnv                   string
+	UploadDir                string
 	DBHost                   string
 	DBPort                   string
 	DBUser                   string
@@ -46,6 +47,7 @@ func Load() Config {
 	return Config{
 		AppPort:                  getEnv("APP_PORT", getEnv("PORT", "8080")),
 		AppEnv:                   getEnv("APP_ENV", "development"),
+		UploadDir:                getEnv("UPLOAD_DIR", "uploads"),
 		DBHost:                   getEnv("DB_HOST", getEnv("MYSQLHOST", getEnv("MYSQL_HOST", "127.0.0.1"))),
 		DBPort:                   getEnv("DB_PORT", getEnv("MYSQLPORT", getEnv("MYSQL_PORT", "3306"))),
 		DBUser:                   getEnv("DB_USER", getEnv("MYSQLUSER", getEnv("MYSQL_USER", "root"))),

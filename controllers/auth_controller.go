@@ -31,25 +31,25 @@ func NewAuthController(cfg config.Config, db *gorm.DB) AuthController {
 }
 
 type registerRequest struct {
-	Name          string      `json:"name"`
-	TTL           string      `json:"ttl"`
-	PhoneNumber   string      `json:"phone_number"`
-	Gender        string      `json:"gender"`
-	Email         string      `json:"email"`
-	Domicile      string      `json:"domicile"`
-	CompanyName   string      `json:"company_name"`
-	Job           *string     `json:"job"`
-	Instagram     *string     `json:"instagram"`
-	Facebook      *string     `json:"facebook"`
-	Tiktok        *string     `json:"tiktok"`
-	Photo         *string     `json:"photo"`
-	KTPPhoto      *string     `json:"ktp_photo"`
-	FullAddress   *string     `json:"full_address"`
-	BankName      *string     `json:"bank_name"`
-	AccountNumber *string     `json:"account_number"`
-	Status        *string     `json:"status"`
-	Password      string      `json:"password"`
-	Role          models.Role `json:"role"`
+	Name          string      `json:"name" form:"name"`
+	TTL           string      `json:"ttl" form:"ttl"`
+	PhoneNumber   string      `json:"phone_number" form:"phone_number"`
+	Gender        string      `json:"gender" form:"gender"`
+	Email         string      `json:"email" form:"email"`
+	Domicile      string      `json:"domicile" form:"domicile"`
+	CompanyName   string      `json:"company_name" form:"company_name"`
+	Job           *string     `json:"job" form:"job"`
+	Instagram     *string     `json:"instagram" form:"instagram"`
+	Facebook      *string     `json:"facebook" form:"facebook"`
+	Tiktok        *string     `json:"tiktok" form:"tiktok"`
+	Photo         *string     `json:"photo" form:"photo"`
+	KTPPhoto      *string     `json:"ktp_photo" form:"ktp_photo"`
+	FullAddress   *string     `json:"full_address" form:"full_address"`
+	BankName      *string     `json:"bank_name" form:"bank_name"`
+	AccountNumber *string     `json:"account_number" form:"account_number"`
+	Status        *string     `json:"status" form:"status"`
+	Password      string      `json:"password" form:"password"`
+	Role          models.Role `json:"role" form:"role"`
 }
 
 type loginRequest struct {
@@ -87,13 +87,13 @@ type applyAgentRequest struct {
 }
 
 type completeAgentVerificationRequest struct {
-	Photo         string `json:"photo" binding:"required"`
-	KTPPhoto      string `json:"ktp_photo" binding:"required"`
-	BankName      string `json:"bank_name" binding:"required"`
-	AccountNumber string `json:"account_number" binding:"required"`
-	TTL           string `json:"ttl" binding:"required"`
-	FullAddress   string `json:"full_address" binding:"required"`
-	Domicile      string `json:"domicile"`
+	Photo         string `json:"photo" form:"photo"`
+	KTPPhoto      string `json:"ktp_photo" form:"ktp_photo"`
+	BankName      string `json:"bank_name" form:"bank_name" binding:"required"`
+	AccountNumber string `json:"account_number" form:"account_number" binding:"required"`
+	TTL           string `json:"ttl" form:"ttl" binding:"required"`
+	FullAddress   string `json:"full_address" form:"full_address" binding:"required"`
+	Domicile      string `json:"domicile" form:"domicile"`
 }
 
 type updateAgentApplicationStatusRequest struct {
@@ -113,9 +113,23 @@ type exchangeSSOCodeRequest struct {
 
 func (a AuthController) Register(c *gin.Context) {
 	var req registerRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindRegisterRequest(c, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "error": err.Error()})
 		return
+	}
+	if isMultipartRequest(c) {
+		if photo, ok, err := saveOptionalImageUpload(c, a.cfg.UploadDir, "photo", "users"); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid photo", "error": err.Error()})
+			return
+		} else if ok {
+			req.Photo = &photo
+		}
+		if ktpPhoto, ok, err := saveOptionalImageUpload(c, a.cfg.UploadDir, "ktp_photo", "ktp"); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid ktp_photo", "error": err.Error()})
+			return
+		} else if ok {
+			req.KTPPhoto = &ktpPhoto
+		}
 	}
 
 	if req.Role == "" || !models.IsValidRole(req.Role) {
@@ -181,6 +195,13 @@ func (a AuthController) Register(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"message": "registration successful", "user": user})
+}
+
+func bindRegisterRequest(c *gin.Context, req *registerRequest) error {
+	if isMultipartRequest(c) {
+		return c.ShouldBind(req)
+	}
+	return c.ShouldBindJSON(req)
 }
 
 func (a AuthController) Login(c *gin.Context) {
@@ -526,8 +547,26 @@ func (a AuthController) ApplyAgent(c *gin.Context) {
 
 func (a AuthController) CompleteAgentVerification(c *gin.Context) {
 	var req completeAgentVerificationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindCompleteAgentVerificationRequest(c, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "error": err.Error()})
+		return
+	}
+	if isMultipartRequest(c) {
+		photo, err := saveRequiredImageUpload(c, a.cfg.UploadDir, "photo", "users")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid photo", "error": err.Error()})
+			return
+		}
+		ktpPhoto, err := saveRequiredImageUpload(c, a.cfg.UploadDir, "ktp_photo", "ktp")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid ktp_photo", "error": err.Error()})
+			return
+		}
+		req.Photo = photo
+		req.KTPPhoto = ktpPhoto
+	}
+	if req.Photo == "" || req.KTPPhoto == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "photo and ktp_photo are required"})
 		return
 	}
 
@@ -570,6 +609,13 @@ func (a AuthController) CompleteAgentVerification(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "verification data completed", "user": user})
+}
+
+func bindCompleteAgentVerificationRequest(c *gin.Context, req *completeAgentVerificationRequest) error {
+	if isMultipartRequest(c) {
+		return c.ShouldBind(req)
+	}
+	return c.ShouldBindJSON(req)
 }
 
 func (a AuthController) ListAgentApplications(c *gin.Context) {

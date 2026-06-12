@@ -2,6 +2,7 @@ package routes
 
 import (
 	"net/http"
+	"os"
 	"strings"
 
 	"begmt2/config"
@@ -20,9 +21,12 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 
 	r := gin.Default()
 	r.Use(corsMiddleware(cfg))
+	_ = os.MkdirAll(cfg.UploadDir, 0755)
+	r.Static("/uploads", cfg.UploadDir)
+
 	authController := controllers.NewAuthController(cfg, db)
 	agentController := controllers.NewAgentController(cfg, db)
-	productController := controllers.NewProductController(db)
+	productController := controllers.NewProductController(cfg, db)
 	notificationHub := services.NewNotificationHub()
 	preorderController := controllers.NewPreorderController(cfg, db, notificationHub)
 	notificationController := controllers.NewNotificationController(db)

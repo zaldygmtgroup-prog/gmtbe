@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"begmt2/config"
 	"begmt2/models"
 
 	"github.com/gin-gonic/gin"
@@ -12,19 +13,20 @@ import (
 )
 
 type ProductController struct {
-	db *gorm.DB
+	cfg config.Config
+	db  *gorm.DB
 }
 
-func NewProductController(db *gorm.DB) ProductController {
-	return ProductController{db: db}
+func NewProductController(cfg config.Config, db *gorm.DB) ProductController {
+	return ProductController{cfg: cfg, db: db}
 }
 
 type productRequest struct {
-	NameProduct string `json:"namaproduct" binding:"required,max=150"`
-	Photo       string `json:"foto" binding:"omitempty,max=255"`
-	Description string `json:"deskripsi"`
-	Unit        string `json:"unit" binding:"required,max=50"`
-	Price       int64  `json:"price" binding:"required,min=1"`
+	NameProduct string `json:"namaproduct" form:"namaproduct" binding:"required,max=150"`
+	Photo       string `json:"foto" form:"foto" binding:"omitempty,max=255"`
+	Description string `json:"deskripsi" form:"deskripsi"`
+	Unit        string `json:"unit" form:"unit" binding:"required,max=50"`
+	Price       int64  `json:"price" form:"price" binding:"required,min=1"`
 }
 
 func (p ProductController) ListProducts(c *gin.Context) {
@@ -67,9 +69,17 @@ func (p ProductController) GetProduct(c *gin.Context) {
 
 func (p ProductController) CreateProduct(c *gin.Context) {
 	var req productRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindProductRequest(c, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "error": err.Error()})
 		return
+	}
+	if isMultipartRequest(c) {
+		if photo, ok, err := saveOptionalImageUpload(c, p.cfg.UploadDir, "foto", "products"); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid product photo", "error": err.Error()})
+			return
+		} else if ok {
+			req.Photo = photo
+		}
 	}
 
 	product := models.Product{
@@ -95,9 +105,19 @@ func (p ProductController) UpdateProduct(c *gin.Context) {
 	}
 
 	var req productRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindProductRequest(c, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "error": err.Error()})
 		return
+	}
+	photoUploaded := false
+	if isMultipartRequest(c) {
+		if photo, ok, err := saveOptionalImageUpload(c, p.cfg.UploadDir, "foto", "products"); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid product photo", "error": err.Error()})
+			return
+		} else if ok {
+			req.Photo = photo
+			photoUploaded = true
+		}
 	}
 
 	var product models.Product
@@ -112,7 +132,9 @@ func (p ProductController) UpdateProduct(c *gin.Context) {
 	}
 
 	product.NameProduct = req.NameProduct
-	product.Photo = req.Photo
+	if !isMultipartRequest(c) || photoUploaded || req.Photo != "" {
+		product.Photo = req.Photo
+	}
 	product.Description = req.Description
 	product.Unit = req.Unit
 	product.Price = req.Price
@@ -123,6 +145,13 @@ func (p ProductController) UpdateProduct(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "product updated", "product": product})
+}
+
+func bindProductRequest(c *gin.Context, req *productRequest) error {
+	if isMultipartRequest(c) {
+		return c.ShouldBind(req)
+	}
+	return c.ShouldBindJSON(req)
 }
 
 func (p ProductController) DeleteProduct(c *gin.Context) {
