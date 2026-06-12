@@ -149,7 +149,31 @@ func (p ProductController) UpdateProduct(c *gin.Context) {
 
 func bindProductRequest(c *gin.Context, req *productRequest) error {
 	if isMultipartRequest(c) {
-		return c.ShouldBind(req)
+		req.NameProduct = c.PostForm("namaproduct")
+		req.Photo = c.PostForm("foto")
+		req.Description = c.PostForm("deskripsi")
+		req.Unit = c.PostForm("unit")
+		price, err := strconv.ParseInt(c.PostForm("price"), 10, 64)
+		if err != nil || price < 1 {
+			return errors.New("price is required and must be at least 1")
+		}
+		req.Price = price
+		if req.NameProduct == "" {
+			return errors.New("namaproduct is required")
+		}
+		if len(req.NameProduct) > 150 {
+			return errors.New("namaproduct must be at most 150 characters")
+		}
+		if len(req.Photo) > 255 {
+			return errors.New("foto must be at most 255 characters")
+		}
+		if req.Unit == "" {
+			return errors.New("unit is required")
+		}
+		if len(req.Unit) > 50 {
+			return errors.New("unit must be at most 50 characters")
+		}
+		return nil
 	}
 	return c.ShouldBindJSON(req)
 }

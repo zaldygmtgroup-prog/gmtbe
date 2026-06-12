@@ -199,7 +199,26 @@ func (a AuthController) Register(c *gin.Context) {
 
 func bindRegisterRequest(c *gin.Context, req *registerRequest) error {
 	if isMultipartRequest(c) {
-		return c.ShouldBind(req)
+		req.Name = c.PostForm("name")
+		req.TTL = c.PostForm("ttl")
+		req.PhoneNumber = c.PostForm("phone_number")
+		req.Gender = c.PostForm("gender")
+		req.Email = c.PostForm("email")
+		req.Domicile = c.PostForm("domicile")
+		req.CompanyName = c.PostForm("company_name")
+		req.Job = optionalFormString(c, "job")
+		req.Instagram = optionalFormString(c, "instagram")
+		req.Facebook = optionalFormString(c, "facebook")
+		req.Tiktok = optionalFormString(c, "tiktok")
+		req.Photo = optionalFormString(c, "photo")
+		req.KTPPhoto = optionalFormString(c, "ktp_photo")
+		req.FullAddress = optionalFormString(c, "full_address")
+		req.BankName = optionalFormString(c, "bank_name")
+		req.AccountNumber = optionalFormString(c, "account_number")
+		req.Status = optionalFormString(c, "status")
+		req.Password = c.PostForm("password")
+		req.Role = models.Role(c.PostForm("role"))
+		return nil
 	}
 	return c.ShouldBindJSON(req)
 }
@@ -613,9 +632,34 @@ func (a AuthController) CompleteAgentVerification(c *gin.Context) {
 
 func bindCompleteAgentVerificationRequest(c *gin.Context, req *completeAgentVerificationRequest) error {
 	if isMultipartRequest(c) {
-		return c.ShouldBind(req)
+		req.BankName = c.PostForm("bank_name")
+		req.AccountNumber = c.PostForm("account_number")
+		req.TTL = c.PostForm("ttl")
+		req.FullAddress = c.PostForm("full_address")
+		req.Domicile = c.PostForm("domicile")
+		if req.BankName == "" {
+			return errors.New("bank_name is required")
+		}
+		if req.AccountNumber == "" {
+			return errors.New("account_number is required")
+		}
+		if req.TTL == "" {
+			return errors.New("ttl is required")
+		}
+		if req.FullAddress == "" {
+			return errors.New("full_address is required")
+		}
+		return nil
 	}
 	return c.ShouldBindJSON(req)
+}
+
+func optionalFormString(c *gin.Context, key string) *string {
+	value := c.PostForm(key)
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func (a AuthController) ListAgentApplications(c *gin.Context) {
