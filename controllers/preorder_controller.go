@@ -6,6 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"math"
 	"net/http"
@@ -776,7 +780,7 @@ func drawInfoRow(pdf *gofpdf.Fpdf, title string, lines []string) {
 }
 
 func drawPreorderItemsTable(pdf *gofpdf.Fpdf, items []models.PreorderItem) {
-	widths := []float64{8, 42, 78, 28, 22, 28, 22, 25, 24}
+	widths := []float64{8, 42, 72, 34, 22, 28, 22, 25, 24}
 	headers := []string{"NO", "Model", "Deskripsi Produk", "Picture", "Quantity", "Unit Price", "Discount", "After Discount", "Total Price"}
 	aligns := []string{"C", "L", "L", "C", "C", "R", "R", "R", "R"}
 
@@ -788,10 +792,7 @@ func drawPreorderItemsTable(pdf *gofpdf.Fpdf, items []models.PreorderItem) {
 		if strings.TrimSpace(description) == "" {
 			description = "-"
 		}
-		qtyUnit := fmt.Sprintf("%d", item.Qty)
-		if item.UnitSnapshot != "" {
-			qtyUnit = fmt.Sprintf("%d %s", item.Qty, item.UnitSnapshot)
-		}
+		qtyText := fmt.Sprintf("%d", item.Qty)
 		unitDiscount := int64(math.Round(float64(item.UnitPrice) * item.DiscountPercent / 100))
 		afterDiscount := item.UnitPrice - unitDiscount
 		cells := []string{
@@ -799,14 +800,14 @@ func drawPreorderItemsTable(pdf *gofpdf.Fpdf, items []models.PreorderItem) {
 			item.ProductNameSnapshot,
 			description,
 			"",
-			qtyUnit,
+			qtyText,
 			formatRupiah(item.UnitPrice),
 			formatRupiah(unitDiscount),
 			formatRupiah(afterDiscount),
 			formatRupiah(item.Total),
 		}
 
-		rowH := calculatePDFRowHeight(pdf, widths, cells, 3.4, 5)
+		rowH := calculatePDFRowHeight(pdf, widths, cells, 3.4, 18)
 		ensurePDFSpace(pdf, rowH+20, func() {
 			drawPreorderItemsHeader(pdf, widths, headers)
 			pdf.SetFont("Arial", "", 6)
@@ -922,7 +923,7 @@ func drawProductImage(pdf *gofpdf.Fpdf, imagePath string, x, y, maxW, maxH float
 	if !ok {
 		return
 	}
-	pdf.ImageOptions(path, x, y, maxW, maxH, false, gofpdf.ImageOptions{}, 0, "")
+	drawLocalImageFit(pdf, path, x, y, maxW, maxH)
 }
 
 func drawRemoteProductImage(pdf *gofpdf.Fpdf, imageURL string, x, y, maxW, maxH float64) bool {
@@ -954,11 +955,40 @@ func drawRemoteProductImage(pdf *gofpdf.Fpdf, imageURL string, x, y, maxW, maxH 
 		imageType = "JPG"
 	}
 
+	drawW, drawH, drawX, drawY := fitImageBox(body, x, y, maxW, maxH)
 	key := fmt.Sprintf("product-%x", sha1.Sum([]byte(parsed.String())))
 	options := gofpdf.ImageOptions{ImageType: imageType}
 	pdf.RegisterImageOptionsReader(key, options, bytes.NewReader(body))
-	pdf.ImageOptions(key, x, y, maxW, maxH, false, options, 0, "")
+	pdf.ImageOptions(key, drawX, drawY, drawW, drawH, false, options, 0, "")
 	return true
+}
+
+func drawLocalImageFit(pdf *gofpdf.Fpdf, path string, x, y, maxW, maxH float64) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		pdf.ImageOptions(path, x, y, maxW, maxH, false, gofpdf.ImageOptions{}, 0, "")
+		return
+	}
+	drawW, drawH, drawX, drawY := fitImageBox(body, x, y, maxW, maxH)
+	pdf.ImageOptions(path, drawX, drawY, drawW, drawH, false, gofpdf.ImageOptions{}, 0, "")
+}
+
+func fitImageBox(body []byte, x, y, maxW, maxH float64) (float64, float64, float64, float64) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(body))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+		return maxW, maxH, x, y
+	}
+
+	ratio := float64(cfg.Width) / float64(cfg.Height)
+	drawW := maxW
+	drawH := drawW / ratio
+	if drawH > maxH {
+		drawH = maxH
+		drawW = drawH * ratio
+	}
+	drawX := x + (maxW-drawW)/2
+	drawY := y + (maxH-drawH)/2
+	return drawW, drawH, drawX, drawY
 }
 
 func imageTypeFromContentType(contentType string) string {
