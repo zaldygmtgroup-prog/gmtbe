@@ -101,7 +101,7 @@ func (p PreorderController) CreatePreorder(c *gin.Context) {
 			itemSubtotal := product.Price * int64(itemReq.Qty)
 			itemDiscountAmount := int64(math.Round(float64(itemSubtotal) * itemReq.DiscountPercent / 100))
 			itemTotal := itemSubtotal - itemDiscountAmount
-			itemKomisi := int64(math.Round(float64(itemTotal) * p.cfg.AgentCommissionPercent / 100))
+			itemKomisi := product.CalculateCommission(itemReq.DiscountPercent) * int64(itemReq.Qty)
 
 			subtotal += itemSubtotal
 			totalDiscount += itemDiscountAmount
@@ -283,7 +283,7 @@ func (p PreorderController) UpdatePreorder(c *gin.Context) {
 			itemSubtotal := product.Price * int64(itemReq.Qty)
 			itemDiscountAmount := int64(math.Round(float64(itemSubtotal) * itemReq.DiscountPercent / 100))
 			itemTotal := itemSubtotal - itemDiscountAmount
-			itemKomisi := int64(math.Round(float64(itemTotal) * p.cfg.AgentCommissionPercent / 100))
+			itemKomisi := product.CalculateCommission(itemReq.DiscountPercent) * int64(itemReq.Qty)
 
 			subtotal += itemSubtotal
 			totalDiscount += itemDiscountAmount

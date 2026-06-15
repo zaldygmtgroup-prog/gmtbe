@@ -314,7 +314,9 @@ Body:
   "foto": "uploads/products/produk-a.jpg",
   "deskripsi": "Deskripsi produk A",
   "unit": "unit",
-  "price": 20000000
+  "price": 20000000,
+  "status": "tersedia",
+  "komisi": 0
 }
 ```
 

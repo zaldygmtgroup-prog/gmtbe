@@ -3,7 +3,6 @@ package controllers
 import (
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -68,7 +67,25 @@ func (a AgentController) CalculateCommission(c *gin.Context) {
 
 	userID := c.GetUint("user_id")
 	finalPrice := req.ProductPrice - req.DiscountAmount
-	commissionAmount := int64(math.Round(float64(finalPrice) * a.cfg.AgentCommissionPercent / 100))
+
+	var product models.Product
+	var commissionAmount int64
+	discountPercent := (float64(req.DiscountAmount) / float64(req.ProductPrice)) * 100.0
+
+	if err := a.db.First(&product, "namaproduct = ?", req.ProductName).Error; err == nil {
+		commissionAmount = product.CalculateCommission(discountPercent)
+	} else {
+		tempProduct := models.Product{
+			Price:  req.ProductPrice,
+			Komisi: float64(req.ProductPrice) * 0.0525,
+		}
+		commissionAmount = tempProduct.CalculateCommission(discountPercent)
+	}
+
+	effectivePercent := 0.0
+	if finalPrice > 0 {
+		effectivePercent = (float64(commissionAmount) / float64(finalPrice)) * 100.0
+	}
 
 	var commission models.AgentCommission
 	var wallet models.AgentWallet
@@ -85,7 +102,7 @@ func (a AgentController) CalculateCommission(c *gin.Context) {
 			ProductPrice:      req.ProductPrice,
 			DiscountAmount:    req.DiscountAmount,
 			FinalPrice:        finalPrice,
-			CommissionPercent: a.cfg.AgentCommissionPercent,
+			CommissionPercent: effectivePercent,
 			CommissionAmount:  commissionAmount,
 		}
 		if err := tx.Create(&commission).Error; err != nil {

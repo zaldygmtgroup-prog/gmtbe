@@ -34,6 +34,7 @@ func main() {
 
 	seeders.SeedDefaultUsers(db, cfg)
 	seeders.SeedOnboardingVideos(db)
+	seeders.SeedProducts(db)
 
 	r := routes.SetupRouter(cfg, db)
 

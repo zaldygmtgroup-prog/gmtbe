@@ -43,13 +43,13 @@ marketing
 
 Ringkasan akses:
 
-| Role | Fitur Utama |
-| --- | --- |
-| `user` | login, profile, apply menjadi agent |
-| `agent` | onboarding, product list, preorder, PDF PO, wallet, withdraw |
-| `sales` | menerima notifikasi PO, approve/invalid preorder |
-| `super_admin` | dashboard admin, list/approve withdraw |
-| `marketing` | role sudah tersedia, endpoint khusus belum ada |
+| Role          | Fitur Utama                                                  |
+| ------------- | ------------------------------------------------------------ |
+| `user`        | login, profile, apply menjadi agent                          |
+| `agent`       | onboarding, product list, preorder, PDF PO, wallet, withdraw |
+| `sales`       | menerima notifikasi PO, approve/invalid preorder             |
+| `super_admin` | dashboard admin, list/approve withdraw                       |
+| `marketing`   | role sudah tersedia, endpoint khusus belum ada               |
 
 Catatan:
 
@@ -392,6 +392,8 @@ Response:
       "deskripsi": "Deskripsi produk",
       "unit": "unit",
       "price": 20000000,
+      "status": "tersedia",
+      "komisi": 0,
       "created_at": "2026-06-12T03:00:00+07:00",
       "updated_at": "2026-06-12T03:00:00+07:00"
     }
@@ -419,7 +421,9 @@ Body:
   "foto": "uploads/products/produk-a.jpg",
   "deskripsi": "Deskripsi produk A",
   "unit": "unit",
-  "price": 20000000
+  "price": 20000000,
+  "status": "tersedia",
+  "komisi": 0
 }
 ```
 

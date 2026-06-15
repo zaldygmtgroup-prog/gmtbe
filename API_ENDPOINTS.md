@@ -201,6 +201,10 @@ Response:
       "deskripsi": "Paket lighting event indoor",
       "unit": "paket",
       "price": 20000000
+      "status": "tersedia",
+      "komisi": 0,
+      "created_at": "2026-06-12T03:00:00Z",
+      "updated_at": "2026-06-12T03:00:00Z"
     }
   ]
 }
@@ -230,7 +234,9 @@ Body:
   "foto": "uploads/products/produk-a.jpg",
   "deskripsi": "Deskripsi produk A",
   "unit": "unit",
-  "price": 20000000
+  "price": 20000000,
+  "status": "tersedia",
+  "komisi": 0
 }
 ```
 
@@ -570,6 +576,7 @@ Dipakai untuk mengambil daftar preorder milik agent yang sedang login.
 Auth: wajib login sebagai `agent`.
 
 Query opsional:
+
 - `?status=draft`
 - `?status=in_review`
 
@@ -622,6 +629,7 @@ Auth: wajib login sebagai `agent`.
 Rule: Agent hanya bisa mencetak PDF preorder miliknya sendiri.
 
 Response:
+
 - `Content-Type: application/pdf` (binary PDF content)
 
 ## Super Admin
@@ -734,6 +742,7 @@ Body:
 ```
 
 Aturan penting:
+
 - Jika `watched_seconds >= duration_seconds * 0.9`, status akan dipromosikan otomatis menjadi `completed`.
 - Jika status dikirim sebagai `completed` tetapi `watched_seconds < duration_seconds * 0.9`, request ditolak.
 - Sequence validation: video dengan urutan lebih lanjut tidak bisa di-complete jika video sebelumnya belum berstatus `completed`.

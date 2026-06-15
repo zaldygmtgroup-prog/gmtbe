@@ -114,8 +114,8 @@ func TestPreorderMultiProductAndWithdraw(t *testing.T) {
 		if po["total"].(float64) != 370000 {
 			t.Errorf("expected total 370,000, got %v", po["total"])
 		}
-		if po["total_komisi"].(float64) != 18500 { // 5% of 370k
-			t.Errorf("expected total_komisi 18,500, got %v", po["total_komisi"])
+		if po["total_komisi"].(float64) != 15000 { // Dynamic commission formula
+			t.Errorf("expected total_komisi 15,000, got %v", po["total_komisi"])
 		}
 		if !strings.HasPrefix(poNumber, "PO-") {
 			t.Errorf("expected po_number to start with PO-, got %s", poNumber)
