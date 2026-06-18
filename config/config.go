@@ -39,6 +39,7 @@ type Config struct {
 	MidtransClientKey        string
 	MidtransServerKey        string
 	MidtransEnvironment      string
+	GoogleClientID           string
 }
 
 func Load() Config {
@@ -74,6 +75,7 @@ func Load() Config {
 		MidtransClientKey:        getEnv("MIDTRANS_CLIENT_KEY", ""),
 		MidtransServerKey:        getEnv("MIDTRANS_SERVER_KEY", ""),
 		MidtransEnvironment:      getEnv("MIDTRANS_ENVIRONMENT", "sandbox"),
+		GoogleClientID:           getEnv("GOOGLE_CLIENT_ID", ""),
 	}
 }
 

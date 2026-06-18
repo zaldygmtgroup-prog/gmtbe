@@ -96,6 +96,42 @@ Body:
 
 Response berisi `token` yang dipakai untuk endpoint protected.
 
+### `POST /api/auth/register/google`
+
+Dipakai untuk registrasi akun baru menggunakan Google Sign-In.
+
+Body:
+
+```json
+{
+  "id_token": "google-id-token",
+  "client": "website_a"
+}
+```
+
+Jika email Google sudah terdaftar, response `409 Conflict`.
+Jika berhasil, user baru dibuat dengan role `user` dan response berisi `token`, `session`, dan `user`.
+
+### `POST /api/auth/google`
+
+Dipakai untuk login menggunakan Google Sign-In dan mendapatkan JWT token backend.
+
+Body:
+
+```json
+{
+  "id_token": "google-id-token",
+  "client": "website_a"
+}
+```
+
+Catatan:
+
+- Backend wajib memiliki env `GOOGLE_CLIENT_ID`.
+- `id_token` diverifikasi ke Google dan `aud` harus sama dengan `GOOGLE_CLIENT_ID`.
+- Jika email Google belum terdaftar, sistem membuat user baru dengan role `user`.
+- Response berisi `token`, `session`, dan `user` seperti endpoint login biasa.
+
 ### `POST /api/auth/forgot-password`
 
 Dipakai untuk fitur lupa password tahap pertama: cek email dan kirim token reset ke Gmail.

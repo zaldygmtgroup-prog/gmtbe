@@ -56,6 +56,7 @@ Tambahkan service MySQL di Railway, lalu set environment variables berikut di se
 APP_ENV=production
 JWT_SECRET=ganti-dengan-secret-panjang
 JWT_EXPIRES_HOURS=24
+GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
 
 RESET_TOKEN_EXPIRES_MINUTES=15
 AGENT_COMMISSION_PERCENT=5
@@ -145,6 +146,35 @@ mysql -u root -p begmt2 < database/migrations/002_add_nullable_detail_user_field
 ```
 
 Response berisi JWT token.
+
+### Register Google
+
+`POST /api/auth/register/google`
+
+```json
+{
+  "id_token": "google-id-token",
+  "client": "website_a"
+}
+```
+
+Jika email Google sudah terdaftar, response `409 Conflict`.
+Jika berhasil, user baru dibuat dengan role `user` dan response berisi JWT token, session, dan data user.
+
+### Login Google
+
+`POST /api/auth/google`
+
+```json
+{
+  "id_token": "google-id-token",
+  "client": "website_a"
+}
+```
+
+Backend memverifikasi `id_token` ke Google dan mencocokkan audience dengan `GOOGLE_CLIENT_ID`.
+Jika email belum terdaftar, user baru otomatis dibuat dengan role `user`.
+Response berisi JWT token, session, dan data user seperti login biasa.
 
 ### Lupa Password
 

@@ -1,10 +1,14 @@
 package controllers
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"begmt2/config"
@@ -56,6 +60,19 @@ type loginRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
 	Client   string `json:"client" binding:"omitempty,max=100"`
+}
+
+type googleAuthRequest struct {
+	IDToken string `json:"id_token" binding:"required"`
+	Client  string `json:"client" binding:"omitempty,max=100"`
+}
+
+type googleTokenInfo struct {
+	Audience      string      `json:"aud"`
+	Email         string      `json:"email"`
+	EmailVerified interface{} `json:"email_verified"`
+	Name          string      `json:"name"`
+	Picture       string      `json:"picture"`
 }
 
 type forgotPasswordRequest struct {
@@ -248,6 +265,125 @@ func (a AuthController) Login(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "login successful", "token": token, "session": session, "user": user})
+}
+
+func (a AuthController) LoginWithGoogle(c *gin.Context) {
+	var req googleAuthRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "error": err.Error()})
+		return
+	}
+
+	if a.cfg.GoogleClientID == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "google login is not configured"})
+		return
+	}
+
+	profile, err := a.verifyGoogleIDToken(req.IDToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "invalid google token", "error": err.Error()})
+		return
+	}
+
+	var user models.User
+	err = a.db.Transaction(func(tx *gorm.DB) error {
+		email := strings.ToLower(strings.TrimSpace(profile.Email))
+		if err := tx.Preload("DetailUser").Where("email = ?", email).First(&user).Error; err == nil {
+			if user.DetailUser.ID == 0 {
+				detail := models.DetailUser{
+					UserID:      user.ID,
+					CompanyName: "-",
+				}
+				if err := tx.Create(&detail).Error; err != nil {
+					return err
+				}
+				user.DetailUser = detail
+			}
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		createdUser, err := createGoogleUser(profile)
+		if err != nil {
+			return err
+		}
+		if err := tx.Create(&createdUser).Error; err != nil {
+			return err
+		}
+
+		user = createdUser
+		return nil
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to login with google"})
+		return
+	}
+
+	token, session, err := a.issueToken(user, req.Client)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "google login successful", "token": token, "session": session, "user": user})
+}
+
+func (a AuthController) RegisterWithGoogle(c *gin.Context) {
+	var req googleAuthRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "error": err.Error()})
+		return
+	}
+
+	if a.cfg.GoogleClientID == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "google register is not configured"})
+		return
+	}
+
+	profile, err := a.verifyGoogleIDToken(req.IDToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "invalid google token", "error": err.Error()})
+		return
+	}
+
+	var user models.User
+	err = a.db.Transaction(func(tx *gorm.DB) error {
+		email := strings.ToLower(strings.TrimSpace(profile.Email))
+		var existingUser models.User
+		if err := tx.Where("email = ?", email).First(&existingUser).Error; err == nil {
+			return errGoogleEmailAlreadyRegistered
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		createdUser, err := createGoogleUser(profile)
+		if err != nil {
+			return err
+		}
+		if err := tx.Create(&createdUser).Error; err != nil {
+			return err
+		}
+
+		user = createdUser
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, errGoogleEmailAlreadyRegistered) {
+			c.JSON(http.StatusConflict, gin.H{"message": "email already registered"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to register with google"})
+		return
+	}
+
+	token, session, err := a.issueToken(user, req.Client)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "google registration successful", "token": token, "session": session, "user": user})
 }
 
 func (a AuthController) ForgotPassword(c *gin.Context) {
@@ -774,6 +910,88 @@ func (a AuthController) createSession(tx *gorm.DB, userID uint, client string) (
 	return session, nil
 }
 
+func createGoogleUser(profile googleTokenInfo) (models.User, error) {
+	email := strings.ToLower(strings.TrimSpace(profile.Email))
+	randomPassword, err := utils.GenerateOpaqueToken(32)
+	if err != nil {
+		return models.User{}, err
+	}
+	hashedPassword, err := utils.HashPassword(randomPassword)
+	if err != nil {
+		return models.User{}, err
+	}
+
+	name := strings.TrimSpace(profile.Name)
+	if name == "" {
+		name = email
+	}
+
+	user := models.User{
+		Name:        name,
+		TTL:         "-",
+		PhoneNumber: "-",
+		Gender:      "-",
+		Email:       email,
+		Domicile:    "-",
+		Password:    hashedPassword,
+		Role:        models.RoleUser,
+		DetailUser: models.DetailUser{
+			CompanyName: "-",
+		},
+	}
+	if profile.Picture != "" {
+		user.DetailUser.Photo = &profile.Picture
+	}
+
+	return user, nil
+}
+
+func (a AuthController) verifyGoogleIDToken(idToken string) (googleTokenInfo, error) {
+	endpoint := "https://oauth2.googleapis.com/tokeninfo?id_token=" + url.QueryEscape(idToken)
+	client := http.Client{Timeout: 10 * time.Second}
+
+	resp, err := client.Get(endpoint)
+	if err != nil {
+		return googleTokenInfo{}, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return googleTokenInfo{}, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return googleTokenInfo{}, fmt.Errorf("google tokeninfo returned status %d", resp.StatusCode)
+	}
+
+	var profile googleTokenInfo
+	if err := json.Unmarshal(body, &profile); err != nil {
+		return googleTokenInfo{}, err
+	}
+	if profile.Audience != a.cfg.GoogleClientID {
+		return googleTokenInfo{}, errors.New("google token audience does not match")
+	}
+	if strings.TrimSpace(profile.Email) == "" {
+		return googleTokenInfo{}, errors.New("google token does not contain email")
+	}
+	if !isGoogleEmailVerified(profile.EmailVerified) {
+		return googleTokenInfo{}, errors.New("google email is not verified")
+	}
+
+	return profile, nil
+}
+
+func isGoogleEmailVerified(value interface{}) bool {
+	switch verified := value.(type) {
+	case bool:
+		return verified
+	case string:
+		return strings.EqualFold(verified, "true")
+	default:
+		return false
+	}
+}
+
 func (a AuthController) resolveSSORedirect(targetClient string, requestedRedirectURI *string) (string, bool) {
 	configuredRedirectURI, ok := a.cfg.SSOClientRedirects[targetClient]
 	if !ok || configuredRedirectURI == "" {
@@ -830,6 +1048,7 @@ func (a AuthController) findValidResetToken(email, token string) (models.Passwor
 }
 
 var (
-	errAgentMustBeVerified      = errors.New("agent must be verified")
-	errAgentApplicationNotFound = errors.New("agent application not found")
+	errAgentMustBeVerified          = errors.New("agent must be verified")
+	errAgentApplicationNotFound     = errors.New("agent application not found")
+	errGoogleEmailAlreadyRegistered = errors.New("google email already registered")
 )
