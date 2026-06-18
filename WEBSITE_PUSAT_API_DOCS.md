@@ -177,7 +177,7 @@ Response:
     "role": "user",
     "detail_user": {
       "company_name": "PT Contoh",
-      "status": "not_verif"
+      "status": "verif"
     }
   }
 }
@@ -368,8 +368,8 @@ Body:
 Efek:
 
 - Mengisi data pengajuan agent di `detail_users`.
-- Set `detail_users.status = "not_verif"`.
-- Role tetap `user` sampai diverifikasi oleh admin melalui proses terpisah.
+- Set `detail_users.status = "verif"`.
+- Role tetap `user` sampai admin mengubah role melalui proses terpisah.
 
 ## Products
 

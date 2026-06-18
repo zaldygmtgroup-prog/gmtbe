@@ -204,8 +204,8 @@ Body:
 Efek:
 
 - Mengisi/update data `detail_users`.
-- Set `detail_users.status = "not_verif"`.
-- Role tetap `user` sampai admin memverifikasi.
+- Set `detail_users.status = "verif"`.
+- Role tetap `user` sampai admin mengubah role.
 
 ## Products
 

@@ -647,7 +647,7 @@ func (a AuthController) ApplyAgent(c *gin.Context) {
 	}
 
 	userID := c.GetUint("user_id")
-	status := "not_verif"
+	status := "verif"
 
 	var user models.User
 	err := a.db.Transaction(func(tx *gorm.DB) error {
@@ -697,7 +697,7 @@ func (a AuthController) ApplyAgent(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "agent application submitted and waiting for verification", "user": user})
+	c.JSON(http.StatusOK, gin.H{"message": "agent application submitted", "user": user})
 }
 
 func (a AuthController) CompleteAgentVerification(c *gin.Context) {

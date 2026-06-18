@@ -530,8 +530,8 @@ Body:
 }
 ```
 
-Endpoint ini hanya untuk role `user`. Sistem akan mengisi data pengajuan dan mengubah `detail_users.status` menjadi `not_verif`.
-Role tetap `user` sampai admin memverifikasi dan mengubah role lewat dashboard.
+Endpoint ini hanya untuk role `user`. Sistem akan mengisi data pengajuan dan mengubah `detail_users.status` menjadi `verif`.
+Role tetap `user` sampai admin mengubah role lewat dashboard.
 
 ### Contoh Route Role Super Admin
 
