@@ -72,13 +72,8 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 		preorders.PUT("/:id", middleware.RoleMiddleware("agent"), middleware.AgentStatusMiddleware(db, "official_agent"), preorderController.UpdatePreorder)
 		preorders.DELETE("/:id", middleware.RoleMiddleware("agent"), middleware.AgentStatusMiddleware(db, "official_agent"), preorderController.DeletePreorder)
 		preorders.POST("/:id/submit", middleware.RoleMiddleware("agent"), middleware.AgentStatusMiddleware(db, "official_agent"), preorderController.SubmitPreorder)
-		preorders.POST("/:id/payment-link", middleware.RoleMiddleware("agent"), middleware.AgentStatusMiddleware(db, "official_agent"), preorderController.CreatePreorderPaymentLink)
+		preorders.POST("/:id/payment-proof", middleware.RoleMiddleware("agent"), middleware.AgentStatusMiddleware(db, "official_agent"), preorderController.UploadPaymentProof)
 		preorders.GET("/:id/pdf", middleware.RoleMiddleware("agent"), middleware.AgentStatusMiddleware(db, "official_agent"), preorderController.GetPreorderPDF)
-	}
-
-	payments := r.Group("/api/payments")
-	{
-		payments.POST("/midtrans/notification", preorderController.MidtransNotification)
 	}
 
 	superAdmin := r.Group("/api/super-admin")

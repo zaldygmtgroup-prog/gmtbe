@@ -366,7 +366,7 @@ Response:
   "message": "Preorder created",
   "preorder": {
     "id": 12,
-    "po_number": "PO-1008",
+    "po_number": "INV/GMT/2026/06/0001",
     "status": "draft",
     "subtotal": 55000000,
     "total_discount": 3450000,
@@ -398,6 +398,42 @@ Efek:
 - Membuat notifikasi untuk role `sales`.
 - Mengirim realtime event ke endpoint SSE sales.
 - Komisi belum masuk wallet saat status `in_review`.
+
+Rule:
+
+- Wajib upload bukti transfer terlebih dulu lewat `POST /api/preorders/:id/payment-proof`.
+
+### `POST /api/preorders/:id/payment-proof`
+
+Dipakai untuk upload bukti transfer sebelum PO disubmit ke sales.
+
+Auth: wajib login sebagai `agent` official.
+
+Content-Type: `multipart/form-data`.
+
+Field:
+
+```text
+payment_proof: file jpg, jpeg, png, atau pdf
+```
+
+Rule:
+
+- Hanya pemilik PO.
+- Hanya status `draft`.
+- File selain `jpg`, `jpeg`, `png`, dan `pdf` ditolak.
+
+Response:
+
+```json
+{
+  "message": "payment proof uploaded",
+  "payment": {
+    "payment_status": "pending",
+    "payment_proof": "/uploads/payment_proofs/1781234567890.png"
+  }
+}
+```
 
 ### Status PO
 
@@ -623,7 +659,7 @@ Response:
   "preorders": [
     {
       "id": 12,
-      "po_number": "PO-1008",
+      "po_number": "INV/GMT/2026/06/0001",
       "status": "in_review",
       "nama_customer": "PT Cahaya Eventindo",
       "email": "procurement@cahayaevent.id",

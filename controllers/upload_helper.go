@@ -14,6 +14,7 @@ import (
 )
 
 const maxImageUploadSize = 5 << 20
+const maxDocumentUploadSize = 10 << 20
 
 var allowedImageExts = map[string]bool{
 	".jpg":  true,
@@ -21,6 +22,13 @@ var allowedImageExts = map[string]bool{
 	".png":  true,
 	".webp": true,
 	".gif":  true,
+}
+
+var allowedTransferProofExts = map[string]bool{
+	".jpg":  true,
+	".jpeg": true,
+	".png":  true,
+	".pdf":  true,
 }
 
 func saveOptionalImageUpload(c *gin.Context, uploadRoot, fieldName, subdir string) (string, bool, error) {
@@ -48,13 +56,25 @@ func saveRequiredImageUpload(c *gin.Context, uploadRoot, fieldName, subdir strin
 }
 
 func saveImageUpload(c *gin.Context, uploadRoot, fieldName, subdir string, file *multipart.FileHeader) (string, error) {
-	if file.Size > maxImageUploadSize {
-		return "", fmt.Errorf("%s exceeds 5MB limit", fieldName)
+	return saveFileUpload(c, uploadRoot, fieldName, subdir, file, allowedImageExts, maxImageUploadSize, "jpg, jpeg, png, webp, or gif")
+}
+
+func saveRequiredTransferProofUpload(c *gin.Context, uploadRoot, fieldName, subdir string) (string, error) {
+	file, err := c.FormFile(fieldName)
+	if err != nil {
+		return "", err
+	}
+	return saveFileUpload(c, uploadRoot, fieldName, subdir, file, allowedTransferProofExts, maxDocumentUploadSize, "jpg, jpeg, png, or pdf")
+}
+
+func saveFileUpload(c *gin.Context, uploadRoot, fieldName, subdir string, file *multipart.FileHeader, allowedExts map[string]bool, maxSize int64, allowedMessage string) (string, error) {
+	if file.Size > maxSize {
+		return "", fmt.Errorf("%s exceeds %dMB limit", fieldName, maxSize>>20)
 	}
 
 	ext := strings.ToLower(filepath.Ext(file.Filename))
-	if !allowedImageExts[ext] {
-		return "", fmt.Errorf("%s must be jpg, jpeg, png, webp, or gif", fieldName)
+	if !allowedExts[ext] {
+		return "", fmt.Errorf("%s must be %s", fieldName, allowedMessage)
 	}
 
 	targetDir := filepath.Join(uploadRoot, subdir)

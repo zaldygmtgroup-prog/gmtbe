@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,6 +22,9 @@ import (
 
 func TestPreorderMultiProductAndWithdraw(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() {
+		_ = os.RemoveAll(filepath.Join(os.TempDir(), "begmt2-test-uploads"))
+	})
 	db := setupTestDB(t)
 
 	tx := db.Begin()
@@ -117,8 +123,8 @@ func TestPreorderMultiProductAndWithdraw(t *testing.T) {
 		if po["total_komisi"].(float64) != 15000 { // Dynamic commission formula
 			t.Errorf("expected total_komisi 15,000, got %v", po["total_komisi"])
 		}
-		if !strings.HasPrefix(poNumber, "PO-") {
-			t.Errorf("expected po_number to start with PO-, got %s", poNumber)
+		if !strings.HasPrefix(poNumber, "INV/GMT/") {
+			t.Errorf("expected po_number to start with INV/GMT/, got %s", poNumber)
 		}
 	})
 
@@ -141,7 +147,66 @@ func TestPreorderMultiProductAndWithdraw(t *testing.T) {
 		}
 	})
 
-	// 3. Test GetPreorderPDF (Content-Type header)
+	// 3. Test UploadPaymentProof
+	t.Run("UploadPaymentProof - Accepts PNG", func(t *testing.T) {
+		r := gin.New()
+		r.Use(func(c *gin.Context) {
+			c.Set("user_id", agentUser.ID)
+			c.Next()
+		})
+		r.POST("/api/preorders/:id/payment-proof", preorderCtrl.UploadPaymentProof)
+
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("payment_proof", "proof.png")
+		if err != nil {
+			t.Fatalf("failed to create form file: %v", err)
+		}
+		if _, err := part.Write([]byte("fake png content")); err != nil {
+			t.Fatalf("failed to write form file: %v", err)
+		}
+		writer.Close()
+
+		req, _ := http.NewRequest("POST", fmt.Sprintf("/api/preorders/%d/payment-proof", preorderID), &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("UploadPaymentProof - Rejects TXT", func(t *testing.T) {
+		r := gin.New()
+		r.Use(func(c *gin.Context) {
+			c.Set("user_id", agentUser.ID)
+			c.Next()
+		})
+		r.POST("/api/preorders/:id/payment-proof", preorderCtrl.UploadPaymentProof)
+
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("payment_proof", "proof.txt")
+		if err != nil {
+			t.Fatalf("failed to create form file: %v", err)
+		}
+		if _, err := part.Write([]byte("not allowed")); err != nil {
+			t.Fatalf("failed to write form file: %v", err)
+		}
+		writer.Close()
+
+		req, _ := http.NewRequest("POST", fmt.Sprintf("/api/preorders/%d/payment-proof", preorderID), &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	// 4. Test GetPreorderPDF (Content-Type header)
 	t.Run("GetPreorderPDF - Serves PDF", func(t *testing.T) {
 		r := gin.New()
 		r.Use(func(c *gin.Context) {
@@ -163,7 +228,7 @@ func TestPreorderMultiProductAndWithdraw(t *testing.T) {
 		}
 	})
 
-	// 4. Test CreateWithdraw
+	// 5. Test CreateWithdraw
 	t.Run("CreateWithdraw - Success and Wallet Update", func(t *testing.T) {
 		r := gin.New()
 		r.Use(func(c *gin.Context) {
@@ -207,5 +272,6 @@ func TestPreorderMultiProductAndWithdraw(t *testing.T) {
 func controllers_test_config() config.Config {
 	return config.Config{
 		AgentCommissionPercent: 5.0,
+		UploadDir:              filepath.Join(os.TempDir(), "begmt2-test-uploads"),
 	}
 }

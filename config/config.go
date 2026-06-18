@@ -35,10 +35,6 @@ type Config struct {
 	SSOCodeExpiresSeconds    int
 	SSOClientRedirects       map[string]string
 	CORSAllowedOrigins       []string
-	MidtransMerchantID       string
-	MidtransClientKey        string
-	MidtransServerKey        string
-	MidtransEnvironment      string
 	GoogleClientID           string
 }
 
@@ -71,10 +67,6 @@ func Load() Config {
 		SSOCodeExpiresSeconds:    getEnvAsInt("SSO_CODE_EXPIRES_SECONDS", 60),
 		SSOClientRedirects:       getEnvAsMap("SSO_CLIENTS", ""),
 		CORSAllowedOrigins:       getEnvAsList("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:5000"),
-		MidtransMerchantID:       getEnv("MIDTRANS_MERCHANT_ID", ""),
-		MidtransClientKey:        getEnv("MIDTRANS_CLIENT_KEY", ""),
-		MidtransServerKey:        getEnv("MIDTRANS_SERVER_KEY", ""),
-		MidtransEnvironment:      getEnv("MIDTRANS_ENVIRONMENT", "sandbox"),
 		GoogleClientID:           getEnv("GOOGLE_CLIENT_ID", ""),
 	}
 }

@@ -28,7 +28,6 @@ func TestGeneratePreorderPDFPreview(t *testing.T) {
 		TotalKomisi:   38060000,
 		Status:        models.PreorderStatusInReview,
 		PaymentStatus: models.PaymentStatusPending,
-		PaymentURL:    "https://app.sandbox.midtrans.com/snap/v4/redirection/064f40f8-211f-44e0-8d51-390cdbec7b90",
 		CreatedAt:     time.Date(2026, 6, 12, 10, 30, 0, 0, time.Local),
 		Agent: &models.User{
 			Name: "Official Agent Preview",

@@ -530,7 +530,7 @@ Response:
   "message": "Preorder created",
   "preorder": {
     "id": 12,
-    "po_number": "PO-1008",
+    "po_number": "INV/GMT/2026/06/0001",
     "status": "draft",
     "payment_status": "unpaid",
     "subtotal": 55000000,
@@ -577,6 +577,7 @@ Rule:
 
 - Hanya pemilik PO.
 - Hanya status `draft`.
+- Wajib sudah upload bukti transfer lewat `POST /api/preorders/:id/payment-proof`.
 
 Efek:
 
@@ -584,32 +585,36 @@ Efek:
 - Notifikasi dibuat untuk role `sales`.
 - Event realtime dikirim ke SSE sales.
 
-### Buat Link Pembayaran Midtrans
+### Upload Bukti Transfer
 
 ```text
-POST /api/preorders/:id/payment-link
+POST /api/preorders/:id/payment-proof
 ```
 
 Auth: wajib login sebagai `agent` official.
 
+Content-Type: `multipart/form-data`.
+
+Field:
+
+```text
+payment_proof: file jpg, jpeg, png, atau pdf
+```
+
 Rule:
 
-- Agent hanya bisa membuat link pembayaran untuk PO miliknya sendiri.
-- Link dibuat memakai Midtrans Snap sandbox selama `MIDTRANS_ENVIRONMENT=sandbox`.
-- Jika link sudah pernah dibuat, endpoint mengembalikan link yang sudah tersimpan.
+- Agent hanya bisa upload bukti transfer untuk PO miliknya sendiri.
+- Hanya PO dengan status `draft`.
+- File selain `jpg`, `jpeg`, `png`, dan `pdf` ditolak.
 
 Response:
 
 ```json
 {
-  "message": "payment link ready",
+  "message": "payment proof uploaded",
   "payment": {
     "payment_status": "pending",
-    "payment_url": "https://app.sandbox.midtrans.com/snap/v4/redirection/...",
-    "payment_token": "snap-token",
-    "midtrans_order_id": "BEGMT2-PO-1008-12-1781234567",
-    "midtrans_client_key": "Mid-client-...",
-    "environment": "sandbox"
+    "payment_proof": "/uploads/payment_proofs/1781234567890.png"
   }
 }
 ```
@@ -625,34 +630,13 @@ Auth: wajib login.
 Rule:
 
 - Agent hanya bisa mencetak PDF miliknya sendiri.
-- Jika Midtrans aktif dan PO belum punya link pembayaran, backend otomatis membuat link pembayaran sebelum PDF dikirim.
-- PDF `QUOTATION` menampilkan kop surat GMT dan link pembayaran resmi Midtrans.
+- PDF `QUOTATION` menampilkan kop surat GMT dan detail PO.
 
 Response:
 
 ```text
 Content-Type: application/pdf
 ```
-
-### Webhook Midtrans
-
-```text
-POST /api/payments/midtrans/notification
-```
-
-Auth: tidak memakai JWT. Endpoint ini dipanggil oleh Midtrans.
-
-Konfigurasi Notification URL di dashboard Midtrans sandbox:
-
-```text
-https://domain-backend/api/payments/midtrans/notification
-```
-
-Efek:
-
-- Backend verifikasi `signature_key` dari Midtrans.
-- Backend mencari PO dari `midtrans_order_id`.
-- Backend update `payment_status` menjadi `pending`, `paid`, `expired`, `failed`, atau `refund`.
 
 ## Agent Area
 

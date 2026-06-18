@@ -31,18 +31,16 @@ import (
 )
 
 type PreorderController struct {
-	cfg      config.Config
-	db       *gorm.DB
-	hub      *services.NotificationHub
-	midtrans services.MidtransService
+	cfg config.Config
+	db  *gorm.DB
+	hub *services.NotificationHub
 }
 
 func NewPreorderController(cfg config.Config, db *gorm.DB, hub *services.NotificationHub) PreorderController {
 	return PreorderController{
-		cfg:      cfg,
-		db:       db,
-		hub:      hub,
-		midtrans: services.NewMidtransService(cfg),
+		cfg: cfg,
+		db:  db,
+		hub: hub,
 	}
 }
 
@@ -129,13 +127,13 @@ func (p PreorderController) CreatePreorder(c *gin.Context) {
 		preorder.Total = total
 		preorder.TotalKomisi = totalKomisi
 
-		if err := tx.Omit("Items").Create(&preorder).Error; err != nil {
+		poNumber, err := nextPONumber(tx, time.Now())
+		if err != nil {
 			return err
 		}
+		preorder.PONumber = poNumber
 
-		// PO-1008 for ID 12 => 996 + preorder.ID
-		preorder.PONumber = fmt.Sprintf("PO-%04d", 996+preorder.ID)
-		if err := tx.Model(&preorder).Update("po_number", preorder.PONumber).Error; err != nil {
+		if err := tx.Omit("Items").Create(&preorder).Error; err != nil {
 			return err
 		}
 
@@ -317,10 +315,7 @@ func (p PreorderController) UpdatePreorder(c *gin.Context) {
 		preorder.Total = total
 		preorder.TotalKomisi = totalKomisi
 		preorder.PaymentStatus = models.PaymentStatusUnpaid
-		preorder.PaymentURL = ""
-		preorder.PaymentToken = ""
-		preorder.MidtransOrderID = ""
-		preorder.MidtransTransactionID = ""
+		preorder.PaymentProof = ""
 
 		if err := tx.Omit("Items").Save(&preorder).Error; err != nil {
 			return err
@@ -425,6 +420,9 @@ func (p PreorderController) SubmitPreorder(c *gin.Context) {
 		if preorder.Status != models.PreorderStatusDraft {
 			return errPreorderNotDraft
 		}
+		if preorder.PaymentProof == "" {
+			return errPaymentProofRequired
+		}
 
 		if err := tx.Model(&preorder).Update("status", models.PreorderStatusInReview).Error; err != nil {
 			return err
@@ -445,6 +443,10 @@ func (p PreorderController) SubmitPreorder(c *gin.Context) {
 		}
 		if errors.Is(err, errPreorderNotDraft) {
 			c.JSON(http.StatusConflict, gin.H{"message": "only draft preorder can be submitted"})
+			return
+		}
+		if errors.Is(err, errPaymentProofRequired) {
+			c.JSON(http.StatusConflict, gin.H{"message": "payment proof must be uploaded before submitting preorder"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to submit preorder"})
@@ -565,17 +567,10 @@ func (p PreorderController) GetPreorderPDF(c *gin.Context) {
 		return
 	}
 
-	if preorder.PaymentURL == "" && p.midtrans.IsEnabled() {
-		if err := p.ensurePaymentLink(&preorder); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to create payment link", "error": err.Error()})
-			return
-		}
-	}
-
 	pdf := buildPreorderPDF(preorder)
 
 	c.Header("Content-Type", "application/pdf")
-	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=%s.pdf", preorder.PONumber))
+	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=%s.pdf", sanitizeIdentifier(preorder.PONumber)))
 	err := pdf.Output(c.Writer)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to generate PDF", "error": err.Error()})
@@ -629,11 +624,10 @@ func buildPreorderPDF(preorder models.Preorder) *gofpdf.Fpdf {
 
 	pdf.Ln(5)
 	drawPreorderTotals(pdf, preorder)
-	drawPaymentInfo(pdf, preorder.PaymentURL)
 	return pdf
 }
 
-func (p PreorderController) CreatePreorderPaymentLink(c *gin.Context) {
+func (p PreorderController) UploadPaymentProof(c *gin.Context) {
 	preorderID, ok := parseUintParam(c, "id", "invalid preorder id")
 	if !ok {
 		return
@@ -641,7 +635,7 @@ func (p PreorderController) CreatePreorderPaymentLink(c *gin.Context) {
 
 	agentID := c.GetUint("user_id")
 	var preorder models.Preorder
-	if err := p.db.Preload("Items").First(&preorder, preorderID).Error; err != nil {
+	if err := p.db.First(&preorder, preorderID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"message": "preorder not found"})
 			return
@@ -654,101 +648,35 @@ func (p PreorderController) CreatePreorderPaymentLink(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"message": "unauthorized: you do not own this preorder"})
 		return
 	}
+	if preorder.Status != models.PreorderStatusDraft {
+		c.JSON(http.StatusConflict, gin.H{"message": "only draft preorder can upload payment proof"})
+		return
+	}
 
-	if err := p.ensurePaymentLink(&preorder); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to create payment link", "error": err.Error()})
+	proofPath, err := saveRequiredTransferProofUpload(c, p.cfg.UploadDir, "payment_proof", "payment_proofs")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid payment_proof", "error": err.Error()})
+		return
+	}
+
+	preorder.PaymentProof = proofPath
+	preorder.PaymentStatus = models.PaymentStatusPending
+
+	if err := p.db.Model(&preorder).Updates(map[string]interface{}{
+		"payment_proof":  proofPath,
+		"payment_status": models.PaymentStatusPending,
+	}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to upload payment proof", "error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "payment link ready",
+		"message": "payment proof uploaded",
 		"payment": gin.H{
-			"payment_status":      preorder.PaymentStatus,
-			"payment_url":         preorder.PaymentURL,
-			"payment_token":       preorder.PaymentToken,
-			"midtrans_order_id":   preorder.MidtransOrderID,
-			"midtrans_client_key": p.cfg.MidtransClientKey,
-			"environment":         p.cfg.MidtransEnvironment,
+			"payment_status": preorder.PaymentStatus,
+			"payment_proof":  preorder.PaymentProof,
 		},
 	})
-}
-
-func (p PreorderController) MidtransNotification(c *gin.Context) {
-	var notification services.MidtransNotification
-	if err := c.ShouldBindJSON(&notification); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid notification", "error": err.Error()})
-		return
-	}
-
-	if !p.midtrans.VerifyNotificationSignature(notification) {
-		c.JSON(http.StatusForbidden, gin.H{"message": "invalid midtrans signature"})
-		return
-	}
-
-	paymentStatus := p.midtrans.MapPaymentStatus(notification)
-	result := p.db.Model(&models.Preorder{}).
-		Where("midtrans_order_id = ?", notification.OrderID).
-		Updates(map[string]interface{}{
-			"payment_status":          paymentStatus,
-			"midtrans_transaction_id": notification.TransactionID,
-		})
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to update payment status", "error": result.Error.Error()})
-		return
-	}
-	if result.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"message": "preorder payment not found"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "notification processed"})
-}
-
-func (p PreorderController) ensurePaymentLink(preorder *models.Preorder) error {
-	if preorder.PaymentURL != "" {
-		return nil
-	}
-	if !p.midtrans.IsEnabled() {
-		return errors.New("midtrans is not configured")
-	}
-
-	orderID := preorder.MidtransOrderID
-	if orderID == "" {
-		orderID = fmt.Sprintf("BEGMT2-%s-%d-%d", preorder.PONumber, preorder.ID, time.Now().Unix())
-	}
-
-	snapResp, err := p.midtrans.CreateSnapTransaction(
-		orderID,
-		preorder.Total,
-		services.MidtransCustomer{
-			FirstName: preorder.NamaCustomer,
-			Email:     preorder.Email,
-			Phone:     preorder.NoHP,
-		},
-		[]services.MidtransItem{
-			{
-				ID:       preorder.PONumber,
-				Price:    preorder.Total,
-				Quantity: 1,
-				Name:     fmt.Sprintf("Quotation %s", preorder.PONumber),
-			},
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	preorder.MidtransOrderID = orderID
-	preorder.PaymentToken = snapResp.Token
-	preorder.PaymentURL = snapResp.RedirectURL
-	preorder.PaymentStatus = models.PaymentStatusPending
-
-	return p.db.Model(preorder).Updates(map[string]interface{}{
-		"midtrans_order_id": orderID,
-		"payment_token":     snapResp.Token,
-		"payment_url":       snapResp.RedirectURL,
-		"payment_status":    models.PaymentStatusPending,
-	}).Error
 }
 
 func drawInfoRow(pdf *gofpdf.Fpdf, title string, lines []string) {
@@ -858,31 +786,6 @@ func drawPreorderTotals(pdf *gofpdf.Fpdf, preorder models.Preorder) {
 	pdf.SetX(labelX)
 	pdf.CellFormat(35, 5, "Total", "", 0, "L", false, 0, "")
 	pdf.CellFormat(valueW, 5, formatRupiah(preorder.Total), "B", 1, "R", false, 0, "")
-}
-
-func drawPaymentInfo(pdf *gofpdf.Fpdf, paymentURL string) {
-	if paymentURL == "" {
-		return
-	}
-	ensurePDFSpace(pdf, 30, nil)
-	pdf.Ln(4)
-	pdf.SetX(10)
-	pdf.SetFont("Arial", "B", 8)
-	pdf.Cell(0, 4, "Official Payment Link:")
-	pdf.Ln(5)
-	pdf.SetFont("Arial", "", 7)
-	pdf.Cell(0, 4, "Rukan Crown Blok B25, Cipondoh, Tangerang")
-	pdf.Ln(4)
-	pdf.Cell(0, 4, "+62 852-1567-6696")
-	pdf.Ln(4)
-	pdf.SetFont("Arial", "U", 7)
-	pdf.SetTextColor(28, 75, 151)
-	pdf.WriteLinkString(4, paymentURL, paymentURL)
-	pdf.SetTextColor(0, 0, 0)
-	pdf.Ln(5)
-	pdf.SetFont("Arial", "", 7)
-	pdf.Cell(0, 4, "Pembayaran hanya melalui link resmi Midtrans di atas.")
-	pdf.Ln(5)
 }
 
 func calculatePDFRowHeight(pdf *gofpdf.Fpdf, widths []float64, cells []string, lineH float64, minH float64) float64 {
@@ -1169,6 +1072,37 @@ func (p PreorderController) handlePreorderError(c *gin.Context, err error) {
 	c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to process preorder"})
 }
 
+func nextPONumber(tx *gorm.DB, now time.Time) (string, error) {
+	prefix := now.Format("INV/GMT/2006/01/")
+
+	var lastPreorder models.Preorder
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("po_number LIKE ?", "INV/GMT/%").
+		Order("id DESC").
+		First(&lastPreorder).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", err
+	}
+
+	nextSequence := 1
+	if err == nil {
+		parts := strings.Split(lastPreorder.PONumber, "/")
+		if len(parts) > 0 {
+			lastSequence, parseErr := strconv.Atoi(parts[len(parts)-1])
+			if parseErr == nil {
+				nextSequence = lastSequence + 1
+			}
+		}
+	}
+
+	return fmt.Sprintf("%s%04d", prefix, nextSequence), nil
+}
+
+func sanitizeIdentifier(value string) string {
+	replacer := strings.NewReplacer("/", "-", "\\", "-", " ", "-")
+	return replacer.Replace(value)
+}
+
 func parseUintParam(c *gin.Context, name, message string) (uint, bool) {
 	id, err := strconv.ParseUint(c.Param(name), 10, 64)
 	if err != nil {
@@ -1180,7 +1114,8 @@ func parseUintParam(c *gin.Context, name, message string) (uint, bool) {
 }
 
 var (
-	errAgentRequired       = errors.New("agent required")
-	errPreorderNotDraft    = errors.New("preorder is not draft")
-	errPreorderNotInReview = errors.New("preorder is not in review")
+	errAgentRequired        = errors.New("agent required")
+	errPreorderNotDraft     = errors.New("preorder is not draft")
+	errPreorderNotInReview  = errors.New("preorder is not in review")
+	errPaymentProofRequired = errors.New("payment proof is required")
 )

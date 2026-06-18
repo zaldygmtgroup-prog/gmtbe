@@ -20,29 +20,26 @@ const (
 )
 
 type Preorder struct {
-	ID                    uint           `gorm:"primaryKey" json:"id"`
-	PONumber              string         `gorm:"size:50;uniqueIndex;column:po_number" json:"po_number"`
-	IDAgent               uint           `gorm:"column:id_agent;index;not null" json:"id_agent"`
-	Agent                 *User          `gorm:"foreignKey:IDAgent;constraint:OnDelete:CASCADE" json:"agent,omitempty"`
-	NamaCustomer          string         `gorm:"size:255;not null;column:nama_customer" json:"nama_customer"`
-	Email                 string         `gorm:"size:255;not null" json:"email"`
-	Alamat                string         `gorm:"type:text;not null" json:"alamat"`
-	NoHP                  string         `gorm:"size:50;not null;column:no_hp" json:"no_hp"`
-	Catatan               string         `gorm:"type:text" json:"catatan"`
-	Subtotal              int64          `gorm:"not null" json:"subtotal"`
-	TotalDiscount         int64          `gorm:"not null;column:total_discount" json:"total_discount"`
-	Total                 int64          `gorm:"not null" json:"total"`
-	TotalKomisi           int64          `gorm:"not null;column:total_komisi" json:"total_komisi"`
-	Status                PreorderStatus `gorm:"type:enum('draft','in_review','approve','invalid');default:'draft';not null" json:"status"`
-	PaymentStatus         PaymentStatus  `gorm:"type:enum('unpaid','pending','paid','expired','failed','refund');default:'unpaid';not null;column:payment_status" json:"payment_status"`
-	PaymentURL            string         `gorm:"size:500;column:payment_url" json:"payment_url,omitempty"`
-	PaymentToken          string         `gorm:"size:255;column:payment_token" json:"payment_token,omitempty"`
-	MidtransOrderID       string         `gorm:"size:100;index;column:midtrans_order_id" json:"midtrans_order_id,omitempty"`
-	MidtransTransactionID string         `gorm:"size:100;column:midtrans_transaction_id" json:"midtrans_transaction_id,omitempty"`
-	InvalidReason         *string        `gorm:"type:text;column:invalid_reason" json:"invalid_reason,omitempty"`
-	Items                 []PreorderItem `gorm:"foreignKey:IDPreorder;constraint:OnDelete:CASCADE" json:"items,omitempty"`
-	CreatedAt             time.Time      `json:"created_at"`
-	UpdatedAt             time.Time      `json:"updated_at"`
+	ID            uint           `gorm:"primaryKey" json:"id"`
+	PONumber      string         `gorm:"size:50;uniqueIndex;column:po_number" json:"po_number"`
+	IDAgent       uint           `gorm:"column:id_agent;index;not null" json:"id_agent"`
+	Agent         *User          `gorm:"foreignKey:IDAgent;constraint:OnDelete:CASCADE" json:"agent,omitempty"`
+	NamaCustomer  string         `gorm:"size:255;not null;column:nama_customer" json:"nama_customer"`
+	Email         string         `gorm:"size:255;not null" json:"email"`
+	Alamat        string         `gorm:"type:text;not null" json:"alamat"`
+	NoHP          string         `gorm:"size:50;not null;column:no_hp" json:"no_hp"`
+	Catatan       string         `gorm:"type:text" json:"catatan"`
+	Subtotal      int64          `gorm:"not null" json:"subtotal"`
+	TotalDiscount int64          `gorm:"not null;column:total_discount" json:"total_discount"`
+	Total         int64          `gorm:"not null" json:"total"`
+	TotalKomisi   int64          `gorm:"not null;column:total_komisi" json:"total_komisi"`
+	Status        PreorderStatus `gorm:"type:enum('draft','in_review','approve','invalid');default:'draft';not null" json:"status"`
+	PaymentStatus PaymentStatus  `gorm:"type:enum('unpaid','pending','paid','expired','failed','refund');default:'unpaid';not null;column:payment_status" json:"payment_status"`
+	PaymentProof  string         `gorm:"size:500;column:payment_proof" json:"payment_proof,omitempty"`
+	InvalidReason *string        `gorm:"type:text;column:invalid_reason" json:"invalid_reason,omitempty"`
+	Items         []PreorderItem `gorm:"foreignKey:IDPreorder;constraint:OnDelete:CASCADE" json:"items,omitempty"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 }
 
 type PreorderItem struct {

@@ -75,11 +75,6 @@ MAIL_PORT=587
 MAIL_USERNAME=email-gmail-anda@gmail.com
 MAIL_PASSWORD=gmail-app-password
 MAIL_FROM_NAME=BeGMT2
-
-MIDTRANS_ENVIRONMENT=sandbox
-MIDTRANS_MERCHANT_ID=your-sandbox-merchant-id
-MIDTRANS_CLIENT_KEY=your-sandbox-client-key
-MIDTRANS_SERVER_KEY=your-sandbox-server-key
 ```
 
 Jika backend dan MySQL berada dalam project Railway yang sama, aplikasi juga bisa membaca variable MySQL bawaan Railway:
