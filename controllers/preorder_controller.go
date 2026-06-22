@@ -578,7 +578,7 @@ func (p PreorderController) GetPreorderPDF(c *gin.Context) {
 }
 
 func buildPreorderPDF(preorder models.Preorder) *gofpdf.Fpdf {
-	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(10, 10, 10)
 	pdf.SetAutoPageBreak(true, 20)
 	pdf.SetFooterFunc(func() {
@@ -680,7 +680,9 @@ func (p PreorderController) UploadPaymentProof(c *gin.Context) {
 }
 
 func drawInfoRow(pdf *gofpdf.Fpdf, title string, lines []string) {
-	const usableW = 277.0
+	pageW, _ := pdf.GetPageSize()
+	left, _, right, _ := pdf.GetMargins()
+	usableW := pageW - left - right
 	x := pdf.GetX()
 	y := pdf.GetY()
 	rowH := 20.0
@@ -708,7 +710,7 @@ func drawInfoRow(pdf *gofpdf.Fpdf, title string, lines []string) {
 }
 
 func drawPreorderItemsTable(pdf *gofpdf.Fpdf, items []models.PreorderItem) {
-	widths := []float64{8, 42, 72, 34, 22, 28, 22, 25, 24}
+	widths := []float64{7, 24, 42, 23, 14, 20, 17, 21, 22}
 	headers := []string{"NO", "Model", "Deskripsi Produk", "Picture", "Quantity", "Unit Price", "Discount", "After Discount", "Total Price"}
 	aligns := []string{"C", "L", "L", "C", "C", "R", "R", "R", "R"}
 
@@ -771,20 +773,23 @@ func drawPreorderItemsHeader(pdf *gofpdf.Fpdf, widths []float64, headers []strin
 
 func drawPreorderTotals(pdf *gofpdf.Fpdf, preorder models.Preorder) {
 	ensurePDFSpace(pdf, 26, nil)
-	labelX := 196.0
+	pageW, _ := pdf.GetPageSize()
+	_, _, right, _ := pdf.GetMargins()
 	valueW := 46.0
+	labelW := 35.0
+	labelX := pageW - right - labelW - valueW
 
 	pdf.SetFont("Arial", "B", 7)
 	pdf.SetX(labelX)
-	pdf.CellFormat(35, 5, "SUBTOTAL", "", 0, "L", false, 0, "")
+	pdf.CellFormat(labelW, 5, "SUBTOTAL", "", 0, "L", false, 0, "")
 	pdf.CellFormat(valueW, 5, formatRupiah(preorder.Subtotal), "B", 1, "R", false, 0, "")
 
 	pdf.SetX(labelX)
-	pdf.CellFormat(35, 5, "Discount", "", 0, "L", false, 0, "")
+	pdf.CellFormat(labelW, 5, "Discount", "", 0, "L", false, 0, "")
 	pdf.CellFormat(valueW, 5, formatRupiah(preorder.TotalDiscount), "B", 1, "R", false, 0, "")
 
 	pdf.SetX(labelX)
-	pdf.CellFormat(35, 5, "Total", "", 0, "L", false, 0, "")
+	pdf.CellFormat(labelW, 5, "Total", "", 0, "L", false, 0, "")
 	pdf.CellFormat(valueW, 5, formatRupiah(preorder.Total), "B", 1, "R", false, 0, "")
 }
 
@@ -969,9 +974,11 @@ func resolvePDFAssetPath(assetPath string) (string, bool) {
 
 func drawQuotationLetterhead(pdf *gofpdf.Fpdf) {
 	const (
-		pageW   = 297.0
-		headerH = 69.4
+		assetW  = 297.0
+		assetH  = 69.4
 	)
+	pageW, _ := pdf.GetPageSize()
+	headerH := assetH * pageW / assetW
 
 	if path, ok := resolvePDFAssetPath("kop_surat.png"); ok {
 		pdf.ImageOptions(path, 0, 0, pageW, headerH, false, gofpdf.ImageOptions{ImageType: "PNG"}, 0, "")
@@ -982,14 +989,15 @@ func drawQuotationLetterhead(pdf *gofpdf.Fpdf) {
 
 func drawQuotationFooter(pdf *gofpdf.Fpdf) {
 	const (
-		pageW   = 297.0
-		footerH = 14.4
+		assetW = 297.0
+		assetH = 14.4
 	)
 	path, ok := resolvePDFAssetPath("footer_surat.png")
 	if !ok {
 		return
 	}
-	_, pageH := pdf.GetPageSize()
+	pageW, pageH := pdf.GetPageSize()
+	footerH := assetH * pageW / assetW
 	pdf.ImageOptions(path, 0, pageH-footerH, pageW, footerH, false, gofpdf.ImageOptions{ImageType: "PNG"}, 0, "")
 }
 
