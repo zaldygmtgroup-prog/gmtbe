@@ -935,3 +935,56 @@ Response:
   "message": "logout successful"
 }
 ```
+
+## Pancake Chat Analytics
+
+Set environment berikut sebelum mengaktifkan webhook:
+
+```env
+PANCAKE_WEBHOOK_SECRET=random-secret-panjang
+ANALYTICS_TIMEZONE=Asia/Jakarta
+```
+
+### `POST /api/integrations/pancake/webhook?secret=<PANCAKE_WEBHOOK_SECRET>`
+
+URL publik yang didaftarkan pada Pancake **Settings > Tools > Webhook**. Event `messaging`
+disimpan secara idempotent; event `post` dan `subscription` diakui tetapi diabaikan oleh analytics.
+Secret juga dapat dikirim melalui header `X-Pancake-Webhook-Secret`.
+
+### `POST /api/pancake/conversions`
+
+Auth: role `super_admin`, `sales`, atau `marketing`.
+
+Catat penjualan dari Pancake POS atau order system agar conversion rate dan atribusi campaign
+dapat dihitung. `external_order_id` bersifat idempotent.
+
+```json
+{
+  "external_order_id": "ORDER-1001",
+  "page_id": "waba_1234567890",
+  "conversation_id": "waba_1234567890_628123456789",
+  "customer_id": "628123456789",
+  "campaign_id": "CMP-01",
+  "campaign_name": "Promo Juni",
+  "product_name": "Produk A",
+  "amount": 2500000,
+  "converted_at": "2026-06-22T10:00:00+07:00"
+}
+```
+
+### `GET /api/pancake/analytics`
+
+Auth: role `super_admin`, `sales`, atau `marketing`.
+
+Secara default menghitung hari ini menurut `ANALYTICS_TIMEZONE`. Filter opsional:
+
+```text
+GET /api/pancake/analytics?page_id=waba_123&from=2026-06-01T00:00:00%2B07:00&to=2026-07-01T00:00:00%2B07:00
+```
+
+Response memuat `new_leads`, `most_asked_products`, `chat_to_purchase`,
+`closing_potential_customers`, `retarget_customers`, `wa_campaign_sales`,
+`customer_activity`, dan `top_keywords`.
+
+Catatan: analytics mulai lengkap sejak webhook diaktifkan. Data penjualan harus dikirim ke endpoint
+conversion karena webhook messaging Pancake tidak memuat transaksi.

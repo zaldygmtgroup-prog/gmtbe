@@ -28,6 +28,10 @@ func main() {
 		&models.AgentOnboardingProgress{},
 		&models.AuthSession{},
 		&models.SSOCode{},
+		&models.PancakeConversation{},
+		&models.PancakeMessage{},
+		&models.PancakeConversion{},
+		&models.AIContentBriefCache{},
 	); err != nil {
 		log.Fatalf("failed to migrate database: %v", err)
 	}

@@ -36,6 +36,8 @@ type Config struct {
 	SSOClientRedirects       map[string]string
 	CORSAllowedOrigins       []string
 	GoogleClientID           string
+	PancakeWebhookSecret     string
+	AnalyticsTimezone        string
 }
 
 func Load() Config {
@@ -68,6 +70,8 @@ func Load() Config {
 		SSOClientRedirects:       getEnvAsMap("SSO_CLIENTS", ""),
 		CORSAllowedOrigins:       getEnvAsList("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:5000"),
 		GoogleClientID:           getEnv("GOOGLE_CLIENT_ID", ""),
+		PancakeWebhookSecret:     getEnv("PANCAKE_WEBHOOK_SECRET", ""),
+		AnalyticsTimezone:        getEnv("ANALYTICS_TIMEZONE", "Asia/Jakarta"),
 	}
 }
 

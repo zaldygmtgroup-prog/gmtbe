@@ -33,6 +33,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 		&models.Notification{},
 		&models.AuthSession{},
 		&models.SSOCode{},
+		&models.AIContentBriefCache{},
 	)
 	if err != nil {
 		t.Fatalf("failed to migrate: %v", err)

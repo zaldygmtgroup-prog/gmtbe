@@ -1,0 +1,62 @@
+CREATE TABLE IF NOT EXISTS pancake_conversations (
+    id VARCHAR(191) PRIMARY KEY,
+    page_id VARCHAR(191) NOT NULL,
+    customer_id VARCHAR(191) NOT NULL,
+    page_customer_id VARCHAR(191) NULL,
+    customer_name VARCHAR(255) NULL,
+    type VARCHAR(30) NULL,
+    post_id VARCHAR(191) NULL,
+    post_message TEXT NULL,
+    first_customer_message_at DATETIME(6) NULL,
+    last_customer_message_at DATETIME(6) NULL,
+    last_page_message_at DATETIME(6) NULL,
+    customer_message_count INT NOT NULL DEFAULT 0,
+    page_message_count INT NOT NULL DEFAULT 0,
+    has_phone BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at DATETIME(3) NULL,
+    updated_at DATETIME(3) NULL,
+    INDEX idx_pancake_conversations_page_id (page_id),
+    INDEX idx_pancake_conversations_customer_id (customer_id),
+    INDEX idx_pancake_conversations_first_customer_message_at (first_customer_message_at),
+    INDEX idx_pancake_conversations_last_customer_message_at (last_customer_message_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pancake_messages (
+    id VARCHAR(191) PRIMARY KEY,
+    page_id VARCHAR(191) NOT NULL,
+    conversation_id VARCHAR(191) NOT NULL,
+    customer_id VARCHAR(191) NULL,
+    sender_id VARCHAR(191) NULL,
+    sender_name VARCHAR(255) NULL,
+    direction VARCHAR(20) NOT NULL,
+    type VARCHAR(30) NULL,
+    text TEXT NULL,
+    has_phone BOOLEAN NOT NULL DEFAULT FALSE,
+    inserted_at DATETIME(6) NOT NULL,
+    created_at DATETIME(3) NULL,
+    updated_at DATETIME(3) NULL,
+    INDEX idx_pancake_messages_page_id (page_id),
+    INDEX idx_pancake_messages_conversation_id (conversation_id),
+    INDEX idx_pancake_messages_inserted_at (inserted_at),
+    INDEX idx_pancake_messages_direction (direction)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pancake_conversions (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    external_order_id VARCHAR(191) NOT NULL,
+    page_id VARCHAR(191) NOT NULL,
+    conversation_id VARCHAR(191) NOT NULL,
+    customer_id VARCHAR(191) NULL,
+    campaign_id VARCHAR(191) NULL,
+    campaign_name VARCHAR(255) NULL,
+    product_name VARCHAR(255) NULL,
+    amount BIGINT NOT NULL DEFAULT 0,
+    converted_at DATETIME(6) NOT NULL,
+    created_at DATETIME(3) NULL,
+    updated_at DATETIME(3) NULL,
+    UNIQUE INDEX idx_pancake_conversions_external_order_id (external_order_id),
+    INDEX idx_pancake_conversions_page_id (page_id),
+    INDEX idx_pancake_conversions_conversation_id (conversation_id),
+    INDEX idx_pancake_conversions_converted_at (converted_at),
+    INDEX idx_pancake_conversions_campaign_id (campaign_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

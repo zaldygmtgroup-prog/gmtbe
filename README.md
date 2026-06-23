@@ -57,6 +57,8 @@ APP_ENV=production
 JWT_SECRET=ganti-dengan-secret-panjang
 JWT_EXPIRES_HOURS=24
 GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
+PANCAKE_WEBHOOK_SECRET=ganti-dengan-random-secret-panjang
+ANALYTICS_TIMEZONE=Asia/Jakarta
 
 RESET_TOKEN_EXPIRES_MINUTES=15
 AGENT_COMMISSION_PERCENT=5

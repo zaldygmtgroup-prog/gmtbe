@@ -31,10 +31,24 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 	preorderController := controllers.NewPreorderController(cfg, db, notificationHub)
 	notificationController := controllers.NewNotificationController(db)
 	onboardingController := controllers.NewAgentOnboardingController(db)
+	pancakeController := controllers.NewPancakeController(cfg, db)
+	marketingController := controllers.NewMarketingController(cfg, db)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	// Pancake calls this URL directly. The shared secret is verified by the
+	// controller because Pancake's webhook specification does not define a
+	// cryptographic signature header.
+	r.POST("/api/integrations/pancake/webhook", pancakeController.Webhook)
+
+	pancake := r.Group("/api/pancake")
+	pancake.Use(middleware.AuthMiddleware(cfg, db), middleware.RoleMiddleware("super_admin", "sales", "marketing"))
+	{
+		pancake.GET("/analytics", pancakeController.Analytics)
+		pancake.POST("/conversions", pancakeController.UpsertConversion)
+	}
 
 	auth := r.Group("/api/auth")
 	{
@@ -121,6 +135,13 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 		notifications.GET("/:id", notificationController.GetNotification)
 		notifications.PUT("/:id/read", notificationController.MarkNotificationAsRead)
 		notifications.PUT("/read-all", notificationController.MarkAllNotificationsAsRead)
+	}
+
+	marketing := r.Group("/api/marketing")
+	{
+		marketing.GET("/content-brief-cache", marketingController.GetCache)
+		marketing.POST("/content-brief-cache", middleware.AuthMiddleware(cfg, db), middleware.RoleMiddleware("marketing", "super_admin"), marketingController.SaveCache)
+		marketing.DELETE("/content-brief-cache", middleware.AuthMiddleware(cfg, db), middleware.RoleMiddleware("marketing", "super_admin"), marketingController.DeleteCache)
 	}
 
 	return r
