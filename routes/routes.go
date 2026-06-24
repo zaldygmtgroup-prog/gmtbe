@@ -33,6 +33,7 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 	onboardingController := controllers.NewAgentOnboardingController(db)
 	pancakeController := controllers.NewPancakeController(cfg, db)
 	marketingController := controllers.NewMarketingController(cfg, db)
+	educationController := controllers.NewEducationController(cfg, db)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -75,6 +76,21 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 		products.POST("", productController.CreateProduct)
 		products.PUT("/:id", productController.UpdateProduct)
 		products.DELETE("/:id", productController.DeleteProduct)
+	}
+
+	educations := r.Group("/api/educations")
+	{
+		// Public
+		educations.GET("", educationController.ListEducations)
+		educations.GET("/:id", educationController.GetEducation)
+
+		// Protected CRUD (super_admin)
+		educations.POST("", middleware.AuthMiddleware(cfg, db), middleware.RoleMiddleware("super_admin"), educationController.CreateEducation)
+		educations.PUT("/:id", middleware.AuthMiddleware(cfg, db), middleware.RoleMiddleware("super_admin"), educationController.UpdateEducation)
+		educations.DELETE("/:id", middleware.AuthMiddleware(cfg, db), middleware.RoleMiddleware("super_admin"), educationController.DeleteEducation)
+
+		// Registration (user)
+		educations.POST("/:id/register", middleware.AuthMiddleware(cfg, db), educationController.RegisterEducation)
 	}
 
 	preorders := r.Group("/api/preorders")

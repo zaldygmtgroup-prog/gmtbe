@@ -988,3 +988,127 @@ Response memuat `new_leads`, `most_asked_products`, `chat_to_purchase`,
 
 Catatan: analytics mulai lengkap sejak webhook diaktifkan. Data penjualan harus dikirim ke endpoint
 conversion karena webhook messaging Pancake tidak memuat transaksi.
+
+## Education
+
+### `GET /api/educations`
+
+Dipakai untuk mengambil daftar acara, pelatihan, atau seminar yang akan datang. Endpoint ini bersifat publik.
+
+Query opsional:
+- `?month=2026-06` (Filter berdasarkan bulan)
+- `?type=Offline` (Filter berdasarkan kategori acara)
+- `?status=Available` (Filter berdasarkan status acara)
+- `?page=1&limit=10` (Pagination)
+
+Response:
+```json
+{
+  "success": true,
+  "message": "List of education events retrieved successfully",
+  "data": [
+    {
+      "id": "edu_12345",
+      "title": "d&b Electro Acoustic Training",
+      "date": "2026-06-29",
+      "time": "12:00",
+      "type": "Offline",
+      "status": "Available",
+      ...
+    }
+  ],
+  "meta": {
+    "total": 1,
+    "page": 1,
+    "limit": 10,
+    "total_pages": 1
+  }
+}
+```
+
+### `GET /api/educations/:id`
+
+Dipakai untuk mengambil informasi lengkap tentang satu acara berdasarkan ID-nya. Endpoint ini bersifat publik.
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "edu_12345",
+    "title": "d&b Electro Acoustic Training",
+    "description": "...",
+    "full_description": "...",
+    "max_attendees": 50,
+    "current_attendees": 12,
+    ...
+  }
+}
+```
+
+### `POST /api/educations`
+
+Dipakai untuk fitur membuat acara education baru.
+Auth: wajib login sebagai `super_admin`.
+
+### `PUT /api/educations/:id`
+
+Dipakai untuk fitur mengubah acara education yang sudah ada.
+Auth: wajib login sebagai `super_admin`.
+
+### `DELETE /api/educations/:id`
+
+Dipakai untuk fitur menghapus acara education.
+Auth: wajib login sebagai `super_admin`.
+
+### `POST /api/educations/:id/register`
+
+Dipakai untuk mendaftarkan pengguna yang sedang login ke acara tertentu.
+Auth: wajib login (mengirim `Authorization: Bearer <token>`).
+
+Body:
+```json
+{
+  "salutation": "Ms",
+  "first_name": "Fety",
+  "surname": "Group",
+  "email": "fety@gmtgroup.co.id",
+  "confirm_email": "fety@gmtgroup.co.id",
+  "phone_landline": "+6221...",
+  "phone_mobile": "+62812...",
+  "company": "GMT Group",
+  "position": "Staff",
+  "address": {
+    "street": "Jl. Contoh No 123",
+    "postcode": "12345",
+    "town": "Jakarta",
+    "country": "Indonesia"
+  },
+  "meal_preference": "None",
+  "additional_information": "Alergi kacang",
+  "consents": {
+    "conditions_of_participation": true,
+    "privacy_policy": true,
+    "marketing_updates": false
+  },
+  "recaptcha_token": "token_from_google_recaptcha"
+}
+```
+
+Response Berhasil (201 Created):
+```json
+{
+  "success": true,
+  "message": "Registration successful. Check your email for the ticket.",
+  "data": {
+    "registration_id": "reg_98765",
+    "event_id": "edu_12345",
+    "user_id": "usr_111",
+    "status": "Confirmed"
+  }
+}
+```
+
+Error Umum:
+- `400 Bad Request`: Validasi gagal (misalnya email tidak cocok atau belum setuju privacy policy).
+- `409 Conflict`: Slot acara sudah penuh atau pengguna sudah terdaftar sebelumnya.

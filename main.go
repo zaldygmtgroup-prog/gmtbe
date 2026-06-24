@@ -32,6 +32,8 @@ func main() {
 		&models.PancakeMessage{},
 		&models.PancakeConversion{},
 		&models.AIContentBriefCache{},
+		&models.Education{},
+		&models.EducationRegistration{},
 	); err != nil {
 		log.Fatalf("failed to migrate database: %v", err)
 	}
