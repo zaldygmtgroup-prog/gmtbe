@@ -34,6 +34,7 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 	pancakeController := controllers.NewPancakeController(cfg, db)
 	marketingController := controllers.NewMarketingController(cfg, db)
 	educationController := controllers.NewEducationController(cfg, db)
+	knowledgeBaseController := controllers.NewKnowledgeBaseController(cfg, db)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -116,6 +117,9 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 		superAdmin.PUT("/agent-applications/:id/status", authController.UpdateAgentApplicationStatus)
 		superAdmin.GET("/withdraws", agentController.ListAllWithdraws)
 		superAdmin.PUT("/withdraws/:id/approve", agentController.ApproveWithdraw)
+		superAdmin.GET("/knowledge-base", knowledgeBaseController.GetAll)
+		superAdmin.POST("/knowledge-base", knowledgeBaseController.SaveAll)
+		superAdmin.GET("/knowledge-base/:roleKey", knowledgeBaseController.GetByRole)
 	}
 
 	agent := r.Group("/api/agent")
