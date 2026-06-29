@@ -1,7 +1,9 @@
 package services
 
 import (
+	"crypto/tls"
 	"fmt"
+	"log"
 
 	"begmt2/config"
 
@@ -17,8 +19,21 @@ func NewMailService(cfg config.Config) MailService {
 }
 
 func (s MailService) SendPasswordResetToken(toEmail, toName, token string) error {
-	if s.cfg.MailUsername == "" || s.cfg.MailPassword == "" {
-		return fmt.Errorf("mail credentials are not configured")
+	// If credentials are empty or contain placeholder values, fallback to logging in development
+	isPlaceholder := s.cfg.MailUsername == "" ||
+		s.cfg.MailUsername == "your-gmail@gmail.com" ||
+		s.cfg.MailPassword == "" ||
+		s.cfg.MailPassword == "your-gmail-app-password"
+
+	if isPlaceholder {
+		if s.cfg.AppEnv == "development" {
+			log.Printf("[DEV-MAIL] Password reset email simulation:")
+			log.Printf("[DEV-MAIL] To: %s <%s>", toName, toEmail)
+			log.Printf("[DEV-MAIL] Subject: Token Reset Password")
+			log.Printf("[DEV-MAIL] Token: %s (Expires in %d minutes)", token, s.cfg.ResetTokenExpiresMinutes)
+			return nil
+		}
+		return fmt.Errorf("mail credentials are not configured (placeholder or empty credentials)")
 	}
 
 	message := gomail.NewMessage()
@@ -34,5 +49,8 @@ func (s MailService) SendPasswordResetToken(toEmail, toName, token string) error
 	`, toName, token, s.cfg.ResetTokenExpiresMinutes))
 
 	dialer := gomail.NewDialer(s.cfg.MailHost, s.cfg.MailPort, s.cfg.MailUsername, s.cfg.MailPassword)
+	if s.cfg.MailInsecureSkipVerify {
+		dialer.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+	}
 	return dialer.DialAndSend(message)
 }

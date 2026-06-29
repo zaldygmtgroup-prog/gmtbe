@@ -25,6 +25,7 @@ type Config struct {
 	MailUsername             string
 	MailPassword             string
 	MailFromName             string
+	MailInsecureSkipVerify   bool
 	ResetTokenExpiresMinutes int
 	AgentCommissionPercent   float64
 	DefaultAdminEmail        string
@@ -59,6 +60,7 @@ func Load() Config {
 		MailUsername:             getEnv("MAIL_USERNAME", ""),
 		MailPassword:             getEnv("MAIL_PASSWORD", ""),
 		MailFromName:             getEnv("MAIL_FROM_NAME", "BeGMT2"),
+		MailInsecureSkipVerify:   getEnvAsBool("MAIL_INSECURE_SKIP_VERIFY", false),
 		ResetTokenExpiresMinutes: getEnvAsInt("RESET_TOKEN_EXPIRES_MINUTES", 15),
 		AgentCommissionPercent:   getEnvAsFloat("AGENT_COMMISSION_PERCENT", 5),
 		DefaultAdminEmail:        getEnv("DEFAULT_ADMIN_EMAIL", "superadmin@example.com"),
@@ -101,6 +103,20 @@ func getEnvAsInt(key string, fallback int) int {
 	}
 
 	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
+}
+
+func getEnvAsBool(key string, fallback bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.ParseBool(value)
 	if err != nil {
 		return fallback
 	}
