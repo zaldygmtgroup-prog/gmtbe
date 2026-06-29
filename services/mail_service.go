@@ -1,9 +1,14 @@
 package services
 
 import (
+	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"time"
 
 	"begmt2/config"
 
@@ -19,11 +24,15 @@ func NewMailService(cfg config.Config) MailService {
 }
 
 func (s MailService) SendPasswordResetToken(toEmail, toName, token string) error {
-	// If credentials are empty or contain placeholder values, fallback to logging in development
-	isPlaceholder := s.cfg.MailUsername == "" ||
-		s.cfg.MailUsername == "your-gmail@gmail.com" ||
-		s.cfg.MailPassword == "" ||
-		s.cfg.MailPassword == "your-gmail-app-password"
+	var isPlaceholder bool
+	if s.cfg.MailMailer == "sendgrid" {
+		isPlaceholder = s.cfg.SendGridAPIKey == ""
+	} else {
+		isPlaceholder = s.cfg.MailUsername == "" ||
+			s.cfg.MailUsername == "your-gmail@gmail.com" ||
+			s.cfg.MailPassword == "" ||
+			s.cfg.MailPassword == "your-gmail-app-password"
+	}
 
 	if isPlaceholder {
 		if s.cfg.AppEnv == "development" {
@@ -34,6 +43,10 @@ func (s MailService) SendPasswordResetToken(toEmail, toName, token string) error
 			return nil
 		}
 		return fmt.Errorf("mail credentials are not configured (placeholder or empty credentials)")
+	}
+
+	if s.cfg.MailMailer == "sendgrid" {
+		return s.sendWithSendGrid(toEmail, toName, token)
 	}
 
 	message := gomail.NewMessage()
@@ -49,8 +62,105 @@ func (s MailService) SendPasswordResetToken(toEmail, toName, token string) error
 	`, toName, token, s.cfg.ResetTokenExpiresMinutes))
 
 	dialer := gomail.NewDialer(s.cfg.MailHost, s.cfg.MailPort, s.cfg.MailUsername, s.cfg.MailPassword)
+	if s.cfg.MailScheme == "smtps" {
+		dialer.SSL = true
+	} else if s.cfg.MailScheme == "smtp" {
+		dialer.SSL = false
+	}
 	if s.cfg.MailInsecureSkipVerify {
 		dialer.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 	return dialer.DialAndSend(message)
+}
+
+func (s MailService) sendWithSendGrid(toEmail, toName, token string) error {
+	url := s.cfg.SendGridAPIURL
+	if url == "" {
+		url = "https://api.sendgrid.com/v3/mail/send"
+	}
+
+	fromEmail := s.cfg.SendGridFromEmail
+	if fromEmail == "" {
+		fromEmail = s.cfg.MailUsername
+	}
+
+	bodyContent := fmt.Sprintf(`
+		<p>Halo %s,</p>
+		<p>Gunakan token berikut untuk mengganti password:</p>
+		<h2>%s</h2>
+		<p>Token berlaku selama %d menit.</p>
+		<p>Abaikan email ini jika kamu tidak meminta reset password.</p>
+	`, toName, token, s.cfg.ResetTokenExpiresMinutes)
+
+	type SendGridEmail struct {
+		Email string `json:"email"`
+		Name  string `json:"name,omitempty"`
+	}
+
+	type SendGridPersonalization struct {
+		To      []SendGridEmail `json:"to"`
+		Subject string          `json:"subject"`
+	}
+
+	type SendGridContent struct {
+		Type  string `json:"type"`
+		Value string `json:"value"`
+	}
+
+	type SendGridRequestBody struct {
+		Personalizations []SendGridPersonalization `json:"personalizations"`
+		From             SendGridEmail             `json:"from"`
+		Content          []SendGridContent         `json:"content"`
+	}
+
+	reqBody := SendGridRequestBody{
+		Personalizations: []SendGridPersonalization{
+			{
+				To: []SendGridEmail{
+					{
+						Email: toEmail,
+						Name:  toName,
+					},
+				},
+				Subject: "Token Reset Password",
+			},
+		},
+		From: SendGridEmail{
+			Email: fromEmail,
+			Name:  s.cfg.MailFromName,
+		},
+		Content: []SendGridContent{
+			{
+				Type:  "text/html",
+				Value: bodyContent,
+			},
+		},
+	}
+
+	jsonBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal SendGrid request body: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create SendGrid HTTP request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+s.cfg.SendGridAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to make HTTP request to SendGrid: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("sendgrid API returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
 }
