@@ -27,6 +27,8 @@ func (s MailService) SendPasswordResetToken(toEmail, toName, token string) error
 	var isPlaceholder bool
 	if s.cfg.MailMailer == "sendgrid" {
 		isPlaceholder = s.cfg.SendGridAPIKey == ""
+	} else if s.cfg.MailMailer == "resend" {
+		isPlaceholder = s.cfg.ResendAPIKey == ""
 	} else {
 		isPlaceholder = s.cfg.MailUsername == "" ||
 			s.cfg.MailUsername == "your-gmail@gmail.com" ||
@@ -47,6 +49,8 @@ func (s MailService) SendPasswordResetToken(toEmail, toName, token string) error
 
 	if s.cfg.MailMailer == "sendgrid" {
 		return s.sendWithSendGrid(toEmail, toName, token)
+	} else if s.cfg.MailMailer == "resend" {
+		return s.sendWithResend(toEmail, toName, token)
 	}
 
 	message := gomail.NewMessage()
@@ -160,6 +164,67 @@ func (s MailService) sendWithSendGrid(toEmail, toName, token string) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("sendgrid API returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+func (s MailService) sendWithResend(toEmail, toName, token string) error {
+	url := s.cfg.ResendAPIURL
+	if url == "" {
+		url = "https://api.resend.com/emails"
+	}
+
+	fromEmail := s.cfg.ResendFromEmail
+	if fromEmail == "" {
+		fromEmail = "onboarding@resend.dev"
+	}
+
+	bodyContent := fmt.Sprintf(`
+		<p>Halo %s,</p>
+		<p>Gunakan token berikut untuk mengganti password:</p>
+		<h2>%s</h2>
+		<p>Token berlaku selama %d menit.</p>
+		<p>Abaikan email ini jika kamu tidak meminta reset password.</p>
+	`, toName, token, s.cfg.ResetTokenExpiresMinutes)
+
+	type ResendRequestBody struct {
+		From    string   `json:"from"`
+		To      []string `json:"to"`
+		Subject string   `json:"subject"`
+		HTML    string   `json:"html"`
+	}
+
+	reqBody := ResendRequestBody{
+		From:    fmt.Sprintf("%s <%s>", s.cfg.MailFromName, fromEmail),
+		To:      []string{toEmail},
+		Subject: "Token Reset Password",
+		HTML:    bodyContent,
+	}
+
+	jsonBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal Resend request body: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create Resend HTTP request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+s.cfg.ResendAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to make HTTP request to Resend: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("resend API returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	return nil

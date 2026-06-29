@@ -126,3 +126,60 @@ func TestSendPasswordResetToken_SendGrid(t *testing.T) {
 	}
 }
 
+func TestSendPasswordResetToken_Resend(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("expected POST request, got %s", r.Method)
+		}
+		if r.URL.Path != "/emails" {
+			t.Errorf("expected /emails path, got %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer mock-resend-key" {
+			t.Errorf("expected Bearer mock-resend-key, got %s", r.Header.Get("Authorization"))
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Errorf("expected application/json, got %s", r.Header.Get("Content-Type"))
+		}
+
+		var body struct {
+			From    string   `json:"from"`
+			To      []string `json:"to"`
+			Subject string   `json:"subject"`
+			HTML    string   `json:"html"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("failed to decode body: %v", err)
+		}
+
+		if body.From != "BeGMT2 <sender@example.com>" {
+			t.Errorf("unexpected sender: %s", body.From)
+		}
+		if len(body.To) != 1 || body.To[0] != "recipient@example.com" {
+			t.Errorf("unexpected recipient: %+v", body.To)
+		}
+		if body.Subject != "Token Reset Password" {
+			t.Errorf("unexpected subject: %s", body.Subject)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := config.Config{
+		AppEnv:                   "production",
+		MailMailer:               "resend",
+		ResendAPIKey:             "mock-resend-key",
+		ResendFromEmail:          "sender@example.com",
+		ResendAPIURL:             server.URL + "/emails",
+		MailFromName:             "BeGMT2",
+		ResetTokenExpiresMinutes: 15,
+	}
+
+	mailService := services.NewMailService(cfg)
+	err := mailService.SendPasswordResetToken("recipient@example.com", "Recipient Name", "123456")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+}
+

@@ -31,6 +31,9 @@ type Config struct {
 	SendGridAPIKey           string
 	SendGridFromEmail        string
 	SendGridAPIURL           string
+	ResendAPIKey             string
+	ResendFromEmail          string
+	ResendAPIURL             string
 	ResetTokenExpiresMinutes int
 	AgentCommissionPercent   float64
 	DefaultAdminEmail        string
@@ -71,6 +74,9 @@ func Load() Config {
 		SendGridAPIKey:           getEnv("SENDGRID_API_KEY", ""),
 		SendGridFromEmail:        getEnv("SENDGRID_FROM_EMAIL", getEnv("MAIL_USERNAME", "")),
 		SendGridAPIURL:           getEnv("SENDGRID_API_URL", "https://api.sendgrid.com/v3/mail/send"),
+		ResendAPIKey:             getEnv("RESEND_API_KEY", ""),
+		ResendFromEmail:          getEnv("RESEND_FROM_EMAIL", "onboarding@resend.dev"),
+		ResendAPIURL:             getEnv("RESEND_API_URL", "https://api.resend.com/emails"),
 		ResetTokenExpiresMinutes: getEnvAsInt("RESET_TOKEN_EXPIRES_MINUTES", 15),
 		AgentCommissionPercent:   getEnvAsFloat("AGENT_COMMISSION_PERCENT", 5),
 		DefaultAdminEmail:        getEnv("DEFAULT_ADMIN_EMAIL", "superadmin@example.com"),
