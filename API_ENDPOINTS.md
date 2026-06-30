@@ -704,6 +704,19 @@ Response:
 
 - `Content-Type: application/pdf` (binary PDF content)
 
+### `GET /api/agent/preorders/stream`
+
+Dipakai untuk fitur realtime monitoring perubahan status PO agent. Endpoint ini memakai Server-Sent Events (SSE).
+
+Auth: wajib login sebagai `agent` (official).
+
+Response berupa stream dengan format:
+
+```text
+event: preorder_updated
+data: {"id": 102, "po_number": "PO-102", "status": "approve", "payment_status": "unpaid", "total": 150000000, "total_komisi": 1500000}
+```
+
 ## Super Admin
 
 ### `GET /api/super-admin/dashboard`

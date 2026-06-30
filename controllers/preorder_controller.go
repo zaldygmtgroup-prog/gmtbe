@@ -521,6 +521,19 @@ func (p PreorderController) UpdatePreorderStatus(c *gin.Context) {
 		return
 	}
 
+	payload, _ := json.Marshal(gin.H{
+		"id":             preorder.ID,
+		"po_number":      preorder.PONumber,
+		"status":         preorder.Status,
+		"payment_status": preorder.PaymentStatus,
+		"total":          preorder.Total,
+		"total_komisi":   preorder.TotalKomisi,
+	})
+	p.hub.Publish(services.NotificationEvent{
+		Role: fmt.Sprintf("agent_%d_preorders", preorder.IDAgent),
+		Data: string(payload),
+	})
+
 	// For salesSSE notification or websocket compatibility we can just return
 	c.JSON(http.StatusOK, gin.H{"message": "preorder status updated", "preorder": preorder})
 }
@@ -537,6 +550,28 @@ func (p PreorderController) StreamSalesNotifications(c *gin.Context) {
 		select {
 		case event := <-ch:
 			c.SSEvent("notification", event)
+			return true
+		case <-c.Request.Context().Done():
+			return false
+		}
+	})
+}
+
+func (p PreorderController) StreamAgentPreorders(c *gin.Context) {
+	agentID := c.GetUint("user_id")
+	topic := fmt.Sprintf("agent_%d_preorders", agentID)
+
+	ch := p.hub.Subscribe(topic)
+	defer p.hub.Unsubscribe(topic, ch)
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+
+	c.Stream(func(w io.Writer) bool {
+		select {
+		case event := <-ch:
+			c.SSEvent("preorder_updated", json.RawMessage(event.Data))
 			return true
 		case <-c.Request.Context().Done():
 			return false

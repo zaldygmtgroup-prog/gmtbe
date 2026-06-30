@@ -37,7 +37,16 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 	knowledgeBaseController := controllers.NewKnowledgeBaseController(cfg, db)
 
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		sqlDB, err := db.DB()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Failed to get database connection"})
+			return
+		}
+		if err := sqlDB.Ping(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Database is unreachable"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Server and database are healthy"})
 	})
 
 	// Pancake calls this URL directly. The shared secret is verified by the
@@ -130,6 +139,7 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 		agent.POST("/withdraws", agentController.CreateWithdraw)
 		agent.GET("/withdraws", agentController.ListMyWithdraws)
 		agent.GET("/preorders", preorderController.ListAgentPreorders)
+		agent.GET("/preorders/stream", preorderController.StreamAgentPreorders)
 	}
 
 	agentOnboarding := r.Group("/api/agent/onboarding")

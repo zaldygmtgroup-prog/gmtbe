@@ -1,0 +1,49 @@
+services:
+  app:
+    # Your Docker Hub repository
+    image: budimansujadmiko/backendgmt1:v1
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: begmt2-app
+    restart: always
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      # We override the DB host to point to the docker container name "db"
+      - DB_HOST=db
+      - DB_PORT=3306
+      - APP_PORT=8080
+      - APP_ENV=production
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+
+  db:
+    image: mysql:8.0
+    container_name: begmt2-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-secret}
+      # The database name should match what's set in your .env (DB_NAME)
+      MYSQL_DATABASE: ${DB_NAME:-begmt2}
+    ports:
+      # Hanya izinkan akses database dari dalam server (localhost) demi keamanan
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD:-secret}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db_data:
+    name: begmt2_db_data
+  uploads_data:
+    name: begmt2_uploads_data
