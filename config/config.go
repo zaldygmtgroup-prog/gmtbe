@@ -46,6 +46,9 @@ type Config struct {
 	CORSAllowedOrigins       []string
 	GoogleClientID           string
 	PancakeWebhookSecret     string
+	PancakePageID            string
+	PancakePageAccessToken   string
+	PancakeWATemplateID      string
 	AnalyticsTimezone        string
 }
 
@@ -89,6 +92,9 @@ func Load() Config {
 		CORSAllowedOrigins:       getEnvAsList("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:5000"),
 		GoogleClientID:           getEnv("GOOGLE_CLIENT_ID", ""),
 		PancakeWebhookSecret:     getEnv("PANCAKE_WEBHOOK_SECRET", ""),
+		PancakePageID:            getEnv("PANCAKE_PAGE_ID", ""),
+		PancakePageAccessToken:   getEnv("PANCAKE_PAGE_ACCESS_TOKEN", ""),
+		PancakeWATemplateID:      getEnv("PANCAKE_WA_TEMPLATE_ID", ""),
 		AnalyticsTimezone:        getEnv("ANALYTICS_TIMEZONE", "Asia/Jakarta"),
 	}
 }

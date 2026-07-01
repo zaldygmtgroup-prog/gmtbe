@@ -420,10 +420,6 @@ func (p PreorderController) SubmitPreorder(c *gin.Context) {
 		if preorder.Status != models.PreorderStatusDraft {
 			return errPreorderNotDraft
 		}
-		if preorder.PaymentProof == "" {
-			return errPaymentProofRequired
-		}
-
 		if err := tx.Model(&preorder).Update("status", models.PreorderStatusInReview).Error; err != nil {
 			return err
 		}
@@ -505,6 +501,14 @@ func (p PreorderController) UpdatePreorderStatus(c *gin.Context) {
 			if err := p.addPreorderCommissionToWallet(tx, preorder); err != nil {
 				return err
 			}
+			
+			// Send payment instructions via Pancake asynchronously
+			go func(po models.Preorder) {
+				pancakeSvc := services.NewPancakeService(p.cfg)
+				if err := pancakeSvc.SendPaymentInstructions(po); err != nil {
+					fmt.Printf("Failed to send WA message via Pancake: %v\n", err)
+				}
+			}(preorder)
 		}
 		return nil
 	})
