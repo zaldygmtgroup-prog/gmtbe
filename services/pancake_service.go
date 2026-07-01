@@ -48,13 +48,6 @@ func (s *PancakeService) SendPaymentInstructions(po models.Preorder) error {
 		payload = map[string]interface{}{
 			"action":      "reply_inbox",
 			"template_id": s.cfg.PancakeWATemplateID,
-			// Simplified template params, to be adjusted based on the actual template in WA Business
-			"template_params": map[string]interface{}{
-				"BODY_PARAMS": map[string]interface{}{
-					"customer_name": po.NamaCustomer,
-					"po_number":     po.PONumber,
-				},
-			},
 		}
 	} else {
 		// Send normal Inbox Message if template is not configured
@@ -86,6 +79,15 @@ func (s *PancakeService) SendPaymentInstructions(po models.Preorder) error {
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("pancake API error, status: %d", resp.StatusCode)
+	}
+
+	// Parse JSON response to check for "success": false
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err == nil {
+		if success, ok := result["success"].(bool); ok && !success {
+			msg, _ := result["message"].(string)
+			return fmt.Errorf("pancake API rejected message: %s", msg)
+		}
 	}
 
 	return nil
