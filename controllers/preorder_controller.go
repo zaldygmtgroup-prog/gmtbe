@@ -519,8 +519,11 @@ func (p PreorderController) UpdatePreorderStatus(c *gin.Context) {
 		return
 	}
 
+	var sendErrMsg string
 	if sendApprovalMessage {
-		go p.sendApprovedPreorderWhatsApp(preorder.ID)
+		if err := p.sendApprovedPreorderWhatsApp(preorder.ID); err != nil {
+			sendErrMsg = err.Error()
+		}
 	}
 
 	payload, _ := json.Marshal(gin.H{
@@ -536,32 +539,38 @@ func (p PreorderController) UpdatePreorderStatus(c *gin.Context) {
 		Data: string(payload),
 	})
 
+	resp := gin.H{"message": "preorder status updated", "preorder": preorder}
+	if sendErrMsg != "" {
+		resp["message"] = "preorder status updated, but failed to send whatsapp: " + sendErrMsg
+		resp["error"] = sendErrMsg
+		c.JSON(http.StatusInternalServerError, resp)
+		return
+	}
+
 	// For salesSSE notification or websocket compatibility we can just return
-	c.JSON(http.StatusOK, gin.H{"message": "preorder status updated", "preorder": preorder})
+	c.JSON(http.StatusOK, resp)
 }
 
-func (p PreorderController) sendApprovedPreorderWhatsApp(preorderID uint) {
+func (p PreorderController) sendApprovedPreorderWhatsApp(preorderID uint) error {
 	var preorder models.Preorder
 	if err := p.db.Preload("Agent").Preload("Items").First(&preorder, preorderID).Error; err != nil {
-		fmt.Printf("Failed to load preorder for WA approval message: %v\n", err)
-		return
+		return fmt.Errorf("failed to load preorder: %w", err)
 	}
 
 	pancakeSvc := services.NewPancakeService(p.cfg)
 	if err := pancakeSvc.SendPaymentInstructions(preorder); err != nil {
-		fmt.Printf("Failed to send WA payment instructions via Pancake: %v\n", err)
-		return
+		return fmt.Errorf("failed to send payment instructions via Pancake: %w", err)
 	}
 
 	pdfBytes, filename, err := buildPreorderPDFBytes(preorder)
 	if err != nil {
-		fmt.Printf("Failed to generate preorder invoice PDF for WA: %v\n", err)
-		return
+		return fmt.Errorf("failed to generate preorder invoice PDF: %w", err)
 	}
 
 	if err := pancakeSvc.SendPreorderInvoice(preorder, pdfBytes, filename); err != nil {
-		fmt.Printf("Failed to send WA invoice PDF via Pancake: %v\n", err)
+		return fmt.Errorf("failed to send invoice PDF via Pancake: %w", err)
 	}
+	return nil
 }
 
 func (p PreorderController) StreamSalesNotifications(c *gin.Context) {
