@@ -1,6 +1,6 @@
 # BeGMT2 Auth API
 
-Backend auth dengan Go, Gin, GORM, MySQL, JWT, bcrypt, dan reset password via token email Gmail SMTP.
+Backend auth dengan Go, Gin, GORM, MySQL, JWT, bcrypt, dan reset password via token WhatsApp lewat Pancake.
 
 Dokumentasi endpoint lengkap ada di [API_ENDPOINTS.md](API_ENDPOINTS.md).
 
@@ -20,9 +20,7 @@ Dokumentasi endpoint lengkap ada di [API_ENDPOINTS.md](API_ENDPOINTS.md).
 CREATE DATABASE begmt2 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-2. Copy `.env.example` menjadi `.env`, lalu isi konfigurasi database dan Gmail.
-
-Untuk Gmail, gunakan App Password, bukan password akun utama.
+2. Copy `.env.example` menjadi `.env`, lalu isi konfigurasi database dan Pancake.
 
 Komisi agent bisa diubah lewat `.env`:
 
@@ -72,11 +70,10 @@ SSO_CODE_EXPIRES_SECONDS=60
 SSO_CLIENTS=website_a=https://gmtgroup2.vercel.app/sso/callback,website_utama=https://backstage-gmt-group.vercel.app/sso/callback
 CORS_ALLOWED_ORIGINS=https://gmtgroup2.vercel.app,https://backstage-gmt-group.vercel.app
 
-MAIL_HOST=smtp.gmail.com
-MAIL_PORT=587
-MAIL_USERNAME=email-gmail-anda@gmail.com
-MAIL_PASSWORD=gmail-app-password
-MAIL_FROM_NAME=BeGMT2
+PANCAKE_PAGE_ID=waba_xxxxx
+PANCAKE_PAGE_ACCESS_TOKEN=page-access-token
+PANCAKE_WA_TEMPLATE_ID=optional-template-untuk-payment-instruction
+PANCAKE_RESET_PASSWORD_TEMPLATE_ID=approved-template-reset-password
 ```
 
 Jika backend dan MySQL berada dalam project Railway yang sama, aplikasi juga bisa membaca variable MySQL bawaan Railway:
@@ -183,7 +180,7 @@ Response berisi JWT token, session, dan data user seperti login biasa.
 }
 ```
 
-Jika email ada, sistem membuat token 6 digit, menyimpan hash token ke database, lalu mengirim token ke Gmail user.
+Jika email ada, sistem membuat token 6 digit, menyimpan hash token ke database, lalu mengirim token ke nomor WhatsApp user melalui Pancake. Untuk pengiriman di luar window 24 jam WhatsApp, isi `PANCAKE_RESET_PASSWORD_TEMPLATE_ID` dengan template reset password yang sudah approved.
 
 ### Verifikasi Token
 

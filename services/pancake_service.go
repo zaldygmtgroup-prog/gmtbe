@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"begmt2/config"
@@ -19,45 +21,93 @@ func NewPancakeService(cfg config.Config) *PancakeService {
 	return &PancakeService{cfg: cfg}
 }
 
-func (s *PancakeService) SendPaymentInstructions(po models.Preorder) error {
+func (s *PancakeService) SendTextMessage(phone, message string) error {
 	if s.cfg.PancakePageID == "" || s.cfg.PancakePageAccessToken == "" {
 		return fmt.Errorf("pancake configuration is not set")
 	}
 
-	phone := po.NoHP
+	phone = normalizePancakePhone(phone)
+	if phone == "" {
+		return fmt.Errorf("phone number is empty")
+	}
+
+	if strings.TrimSpace(message) == "" {
+		return fmt.Errorf("message is empty")
+	}
+
+	return s.sendMessagePayload(phone, map[string]interface{}{
+		"action":  "reply_inbox",
+		"message": message,
+	})
+}
+
+func (s *PancakeService) SendTemplateMessage(phone, templateID string, templateParams map[string]interface{}) error {
+	templateID = strings.TrimSpace(templateID)
+	if templateID == "" {
+		return fmt.Errorf("template id is empty")
+	}
+
+	payload := map[string]interface{}{
+		"action":      "reply_inbox",
+		"template_id": templateID,
+	}
+	if len(templateParams) > 0 {
+		payload["template_params"] = templateParams
+	}
+
+	return s.sendMessagePayload(phone, payload)
+}
+
+func (s *PancakeService) SendPasswordResetToken(phone, name, token string, expiresMinutes int) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "Pengguna"
+	}
+
+	if s.cfg.PancakeResetTemplateID != "" {
+		return s.SendTemplateMessage(phone, s.cfg.PancakeResetTemplateID, map[string]interface{}{
+			"BODY_PARAMS": map[string]string{
+				"name":            name,
+				"token":           token,
+				"expires_minutes": strconv.Itoa(expiresMinutes),
+			},
+		})
+	}
+
+	message := fmt.Sprintf("Halo %s,\n\nToken reset password BeGMT2 Anda: %s\nToken berlaku selama %d menit. Jangan bagikan token ini kepada siapa pun.\n\nJika Anda tidak meminta reset password, abaikan pesan ini.", name, token, expiresMinutes)
+	return s.SendTextMessage(phone, message)
+}
+
+func (s *PancakeService) SendPaymentInstructions(po models.Preorder) error {
+	phone := normalizePancakePhone(po.NoHP)
 	if phone == "" {
 		return fmt.Errorf("customer phone number is empty")
 	}
 
-	// Convert local prefix 0 to country code 62 (assuming Indonesian numbers) if necessary,
-	// though standard WABA usually requires 62.
-	if len(phone) > 0 && phone[0] == '0' {
-		phone = "62" + phone[1:]
-	}
-
-	// Follow yaml tip: [pageID]_[phoneNumber]
-	conversationID := fmt.Sprintf("%s_%s", s.cfg.PancakePageID, phone)
-
-	url := fmt.Sprintf("https://pages.fm/api/public_api/v1/pages/%s/conversations/%s/messages?page_access_token=%s",
-		s.cfg.PancakePageID, conversationID, s.cfg.PancakePageAccessToken)
-
-	var payload map[string]interface{}
-
 	if s.cfg.PancakeWATemplateID != "" {
-		// Send WhatsApp Template Message
-		payload = map[string]interface{}{
+		return s.sendMessagePayload(phone, map[string]interface{}{
 			"action":      "reply_inbox",
 			"template_id": s.cfg.PancakeWATemplateID,
-		}
-	} else {
-		// Send normal Inbox Message if template is not configured
-		message := fmt.Sprintf("Halo %s,\n\nPreorder Anda dengan nomor %s telah disetujui. Total yang harus dibayar: Rp %d.\nSilakan balas pesan ini untuk mendapatkan informasi rekening dan cara pembayaran.\n\nTerima kasih.", po.NamaCustomer, po.PONumber, po.Total)
-		
-		payload = map[string]interface{}{
-			"action":  "reply_inbox",
-			"message": message,
-		}
+		})
 	}
+
+	message := fmt.Sprintf("Halo %s,\n\nPreorder Anda dengan nomor %s telah disetujui. Total yang harus dibayar: Rp %d.\nSilakan balas pesan ini untuk mendapatkan informasi rekening dan cara pembayaran.\n\nTerima kasih.", po.NamaCustomer, po.PONumber, po.Total)
+	return s.SendTextMessage(phone, message)
+}
+
+func (s *PancakeService) sendMessagePayload(phone string, payload map[string]interface{}) error {
+	if s.cfg.PancakePageID == "" || s.cfg.PancakePageAccessToken == "" {
+		return fmt.Errorf("pancake configuration is not set")
+	}
+
+	phone = normalizePancakePhone(phone)
+	if phone == "" {
+		return fmt.Errorf("phone number is empty")
+	}
+
+	conversationID := fmt.Sprintf("%s_%s", s.cfg.PancakePageID, phone)
+	url := fmt.Sprintf("https://pages.fm/api/public_api/v1/pages/%s/conversations/%s/messages?page_access_token=%s",
+		s.cfg.PancakePageID, conversationID, s.cfg.PancakePageAccessToken)
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -91,4 +141,23 @@ func (s *PancakeService) SendPaymentInstructions(po models.Preorder) error {
 	}
 
 	return nil
+}
+
+func normalizePancakePhone(phone string) string {
+	phone = strings.TrimSpace(phone)
+	phone = strings.TrimPrefix(phone, "+")
+
+	var builder strings.Builder
+	for _, r := range phone {
+		if r >= '0' && r <= '9' {
+			builder.WriteRune(r)
+		}
+	}
+
+	phone = builder.String()
+	if strings.HasPrefix(phone, "0") {
+		phone = "62" + strings.TrimPrefix(phone, "0")
+	}
+
+	return phone
 }

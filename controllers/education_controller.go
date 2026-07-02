@@ -1,14 +1,16 @@
 package controllers
 
 import (
+	"fmt"
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
-	"fmt"
 
 	"begmt2/config"
 	"begmt2/models"
+	"begmt2/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -18,6 +20,11 @@ import (
 type EducationController struct {
 	DB  *gorm.DB
 	Cfg config.Config
+}
+
+type educationResponse struct {
+	models.Education
+	IsRegistered bool `json:"is_registered"`
 }
 
 func NewEducationController(cfg config.Config, db *gorm.DB) *EducationController {
@@ -64,14 +71,16 @@ func (c *EducationController) ListEducations(ctx *gin.Context) {
 		return
 	}
 
+	data := c.buildEducationListResponse(ctx, educations)
+
 	ctx.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "List of education events retrieved successfully",
-		"data":    educations,
+		"data":    data,
 		"meta": gin.H{
-			"total": total,
-			"page":  page,
-			"limit": limit,
+			"total":       total,
+			"page":        page,
+			"limit":       limit,
 			"total_pages": int(math.Ceil(float64(total) / float64(limit))),
 		},
 	})
@@ -91,9 +100,14 @@ func (c *EducationController) GetEducation(ctx *gin.Context) {
 		return
 	}
 
+	isRegistered := c.isEducationRegistered(ctx, education.ID)
+
 	ctx.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    education,
+		"data": educationResponse{
+			Education:    education,
+			IsRegistered: isRegistered,
+		},
 	})
 }
 
@@ -168,24 +182,23 @@ func (c *EducationController) DeleteEducation(ctx *gin.Context) {
 // RegisterEducation POST /api/educations/:id/register
 func (c *EducationController) RegisterEducation(ctx *gin.Context) {
 	eventID := ctx.Param("id")
-	userSession, exists := ctx.Get("user")
-	if !exists {
+	userID := ctx.GetUint("user_id")
+	if userID == 0 {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Unauthorized"})
 		return
 	}
-	user := userSession.(models.User)
 
 	var input struct {
-		Salutation             string `json:"salutation" binding:"required"`
-		FirstName              string `json:"first_name" binding:"required"`
-		Surname                string `json:"surname" binding:"required"`
-		Email                  string `json:"email" binding:"required,email"`
-		ConfirmEmail           string `json:"confirm_email" binding:"required,email"`
-		PhoneLandline          string `json:"phone_landline"`
-		PhoneMobile            string `json:"phone_mobile" binding:"required"`
-		Company                string `json:"company"`
-		Position               string `json:"position"`
-		Address                struct {
+		Salutation    string `json:"salutation" binding:"required"`
+		FirstName     string `json:"first_name" binding:"required"`
+		Surname       string `json:"surname" binding:"required"`
+		Email         string `json:"email" binding:"required,email"`
+		ConfirmEmail  string `json:"confirm_email" binding:"required,email"`
+		PhoneLandline string `json:"phone_landline"`
+		PhoneMobile   string `json:"phone_mobile" binding:"required"`
+		Company       string `json:"company"`
+		Position      string `json:"position"`
+		Address       struct {
 			Street   string `json:"street" binding:"required"`
 			Postcode string `json:"postcode" binding:"required"`
 			Town     string `json:"town" binding:"required"`
@@ -232,10 +245,10 @@ func (c *EducationController) RegisterEducation(ctx *gin.Context) {
 		ctx.JSON(http.StatusConflict, gin.H{"success": false, "message": "Event is already fully booked."})
 		return
 	}
-	
+
 	// Check if already registered
 	var existingReg models.EducationRegistration
-	if err := c.DB.Where("event_id = ? AND user_id = ?", eventID, user.ID).First(&existingReg).Error; err == nil {
+	if err := c.DB.Where("event_id = ? AND user_id = ?", eventID, userID).First(&existingReg).Error; err == nil {
 		ctx.JSON(http.StatusConflict, gin.H{"success": false, "message": "You are already registered for this event."})
 		return
 	}
@@ -243,7 +256,7 @@ func (c *EducationController) RegisterEducation(ctx *gin.Context) {
 	registration := models.EducationRegistration{
 		ID:                        "reg_" + uuid.New().String(),
 		EventID:                   eventID,
-		UserID:                    user.ID,
+		UserID:                    userID,
 		Salutation:                input.Salutation,
 		FirstName:                 input.FirstName,
 		Surname:                   input.Surname,
@@ -274,7 +287,7 @@ func (c *EducationController) RegisterEducation(ctx *gin.Context) {
 		if err := tx.Model(&education).Update("current_attendees", gorm.Expr("current_attendees + ?", 1)).Error; err != nil {
 			return err
 		}
-		
+
 		// Optional: if max attendees reached, set status to Full
 		if education.MaxAttendees > 0 && (education.CurrentAttendees+1) >= education.MaxAttendees {
 			if err := tx.Model(&education).Update("status", "Full").Error; err != nil {
@@ -300,4 +313,86 @@ func (c *EducationController) RegisterEducation(ctx *gin.Context) {
 			"status":          registration.Status,
 		},
 	})
+}
+
+func (c *EducationController) buildEducationListResponse(ctx *gin.Context, educations []models.Education) []educationResponse {
+	response := make([]educationResponse, 0, len(educations))
+	for _, education := range educations {
+		response = append(response, educationResponse{Education: education})
+	}
+
+	userID, ok := c.optionalAuthenticatedUserID(ctx)
+	if !ok || len(educations) == 0 {
+		return response
+	}
+
+	eventIDs := make([]string, 0, len(educations))
+	for _, education := range educations {
+		eventIDs = append(eventIDs, education.ID)
+	}
+
+	var registrations []models.EducationRegistration
+	if err := c.DB.
+		Select("event_id").
+		Where("user_id = ? AND event_id IN ?", userID, eventIDs).
+		Find(&registrations).Error; err != nil {
+		return response
+	}
+
+	registeredEvents := make(map[string]bool, len(registrations))
+	for _, registration := range registrations {
+		registeredEvents[registration.EventID] = true
+	}
+
+	for i := range response {
+		response[i].IsRegistered = registeredEvents[response[i].ID]
+	}
+
+	return response
+}
+
+func (c *EducationController) isEducationRegistered(ctx *gin.Context, eventID string) bool {
+	userID, ok := c.optionalAuthenticatedUserID(ctx)
+	if !ok {
+		return false
+	}
+
+	var count int64
+	if err := c.DB.Model(&models.EducationRegistration{}).
+		Where("event_id = ? AND user_id = ?", eventID, userID).
+		Count(&count).Error; err != nil {
+		return false
+	}
+
+	return count > 0
+}
+
+func (c *EducationController) optionalAuthenticatedUserID(ctx *gin.Context) (uint, bool) {
+	authHeader := ctx.GetHeader("Authorization")
+	if authHeader == "" {
+		return 0, false
+	}
+
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return 0, false
+	}
+
+	claims, err := utils.ParseJWT(parts[1], c.Cfg.JWTSecret)
+	if err != nil || claims.SessionID == "" {
+		return 0, false
+	}
+
+	var session models.AuthSession
+	err = c.DB.Where(
+		"session_id = ? AND user_id = ? AND revoked_at IS NULL AND expires_at > ?",
+		claims.SessionID,
+		claims.UserID,
+		time.Now(),
+	).First(&session).Error
+	if err != nil {
+		return 0, false
+	}
+
+	return claims.UserID, true
 }

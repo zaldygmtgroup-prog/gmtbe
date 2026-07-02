@@ -219,6 +219,8 @@ Body:
 }
 ```
 
+Jika email terdaftar, token reset dikirim ke nomor WhatsApp user melalui Pancake. Untuk pengiriman di luar window 24 jam WhatsApp, backend memakai template reset password approved dari `PANCAKE_RESET_PASSWORD_TEMPLATE_ID`.
+
 ### Verify Reset Token
 
 ```text

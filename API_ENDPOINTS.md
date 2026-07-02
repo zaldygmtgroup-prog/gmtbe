@@ -134,7 +134,7 @@ Catatan:
 
 ### `POST /api/auth/forgot-password`
 
-Dipakai untuk fitur lupa password tahap pertama: cek email dan kirim token reset ke Gmail.
+Dipakai untuk fitur lupa password tahap pertama: cek email dan kirim token reset ke WhatsApp melalui Pancake.
 
 Body:
 
@@ -144,7 +144,7 @@ Body:
 }
 ```
 
-Jika email terdaftar, sistem membuat token 6 digit dan mengirimkannya lewat email.
+Jika email terdaftar, sistem membuat token 6 digit dan mengirimkannya ke nomor WhatsApp user. Untuk pengiriman di luar window 24 jam WhatsApp, backend harus memakai template reset password Pancake/WhatsApp yang sudah approved melalui env `PANCAKE_RESET_PASSWORD_TEMPLATE_ID`.
 
 ### `POST /api/auth/verify-reset-token`
 
@@ -1007,6 +1007,9 @@ conversion karena webhook messaging Pancake tidak memuat transaksi.
 ### `GET /api/educations`
 
 Dipakai untuk mengambil daftar acara, pelatihan, atau seminar yang akan datang. Endpoint ini bersifat publik.
+Jika frontend mengirim `Authorization: Bearer <token>` yang valid, setiap item akan menyertakan
+`is_registered` berdasarkan status pendaftaran user tersebut. Jika token tidak dikirim atau tidak
+valid, user dianggap guest dan `is_registered` bernilai `false`.
 
 Query opsional:
 - `?month=2026-06` (Filter berdasarkan bulan)
@@ -1027,6 +1030,7 @@ Response:
       "time": "12:00",
       "type": "Offline",
       "status": "Available",
+      "is_registered": false,
       ...
     }
   ],
@@ -1042,6 +1046,8 @@ Response:
 ### `GET /api/educations/:id`
 
 Dipakai untuk mengambil informasi lengkap tentang satu acara berdasarkan ID-nya. Endpoint ini bersifat publik.
+Frontend boleh mengirim `Authorization: Bearer <token>`; jika token valid, response akan menunjukkan
+apakah user sudah terdaftar pada event tersebut.
 
 Response:
 ```json
@@ -1054,6 +1060,7 @@ Response:
     "full_description": "...",
     "max_attendees": 50,
     "current_attendees": 12,
+    "is_registered": true,
     ...
   }
 }

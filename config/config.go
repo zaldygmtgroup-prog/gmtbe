@@ -49,6 +49,7 @@ type Config struct {
 	PancakePageID            string
 	PancakePageAccessToken   string
 	PancakeWATemplateID      string
+	PancakeResetTemplateID   string
 	AnalyticsTimezone        string
 }
 
@@ -95,6 +96,7 @@ func Load() Config {
 		PancakePageID:            getEnv("PANCAKE_PAGE_ID", ""),
 		PancakePageAccessToken:   getEnv("PANCAKE_PAGE_ACCESS_TOKEN", ""),
 		PancakeWATemplateID:      getEnv("PANCAKE_WA_TEMPLATE_ID", ""),
+		PancakeResetTemplateID:   getEnv("PANCAKE_RESET_PASSWORD_TEMPLATE_ID", ""),
 		AnalyticsTimezone:        getEnv("ANALYTICS_TIMEZONE", "Asia/Jakarta"),
 	}
 }
