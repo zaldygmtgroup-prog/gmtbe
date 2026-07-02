@@ -487,7 +487,21 @@ Invalid:
 Efek:
 
 - Jika `approve`, komisi PO masuk ke wallet agent.
+- Jika `approve`, backend mengirim pesan WhatsApp ke customer melalui Pancake:
+  1. Instruksi pembayaran seperti sebelumnya.
+  2. File invoice/quotation PDF dari PO tersebut.
 - Jika `invalid`, komisi tidak masuk wallet agent.
+
+Catatan pengiriman invoice WhatsApp:
+
+- Backend membuat PDF yang sama dengan `GET /api/preorders/:id/pdf`.
+- Backend upload PDF ke Pancake `upload_contents`, lalu mengirimnya sebagai document message memakai `content_ids`.
+- Pastikan env Pancake sudah terisi:
+
+```env
+PANCAKE_PAGE_ID=waba_xxx
+PANCAKE_PAGE_ACCESS_TOKEN=xxx
+```
 
 ## Notifications
 

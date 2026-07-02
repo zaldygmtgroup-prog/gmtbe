@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -95,6 +97,112 @@ func (s *PancakeService) SendPaymentInstructions(po models.Preorder) error {
 	return s.SendTextMessage(phone, message)
 }
 
+func (s *PancakeService) SendDocumentMessage(phone, contentID, filename string) error {
+	contentID = strings.TrimSpace(contentID)
+	if contentID == "" {
+		return fmt.Errorf("content id is empty")
+	}
+
+	payload := map[string]interface{}{
+		"action":      "reply_inbox",
+		"content_ids": []string{contentID},
+	}
+	if strings.TrimSpace(filename) != "" {
+		payload["filename"] = filename
+	}
+
+	return s.sendMessagePayload(phone, payload)
+}
+
+func (s *PancakeService) SendPreorderInvoice(po models.Preorder, pdfBytes []byte, filename string) error {
+	phone := normalizePancakePhone(po.NoHP)
+	if phone == "" {
+		return fmt.Errorf("customer phone number is empty")
+	}
+	if len(pdfBytes) == 0 {
+		return fmt.Errorf("invoice PDF is empty")
+	}
+	if strings.TrimSpace(filename) == "" {
+		filename = "invoice.pdf"
+	}
+
+	contentID, err := s.UploadContent(filename, "application/pdf", pdfBytes)
+	if err != nil {
+		return err
+	}
+
+	return s.SendDocumentMessage(phone, contentID, filename)
+}
+
+func (s *PancakeService) UploadContent(filename, contentType string, content []byte) (string, error) {
+	if s.cfg.PancakePageID == "" || s.cfg.PancakePageAccessToken == "" {
+		return "", fmt.Errorf("pancake configuration is not set")
+	}
+	if len(content) == 0 {
+		return "", fmt.Errorf("content is empty")
+	}
+	if strings.TrimSpace(filename) == "" {
+		filename = "document"
+	}
+	if strings.TrimSpace(contentType) == "" {
+		contentType = "application/octet-stream"
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreatePart(map[string][]string{
+		"Content-Disposition": {fmt.Sprintf(`form-data; name="file"; filename="%s"`, escapeMultipartFilename(filename))},
+		"Content-Type":        {contentType},
+	})
+	if err != nil {
+		return "", err
+	}
+	if _, err := part.Write(content); err != nil {
+		return "", err
+	}
+	if err := writer.Close(); err != nil {
+		return "", err
+	}
+
+	url := fmt.Sprintf("https://pages.fm/api/public_api/v1/pages/%s/upload_contents?page_access_token=%s",
+		s.cfg.PancakePageID, s.cfg.PancakePageAccessToken)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest("POST", url, &body)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("pancake upload API error, status: %d, body: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		ID      string `json:"id"`
+		Success *bool  `json:"success"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", err
+	}
+	if result.Success != nil && !*result.Success {
+		return "", fmt.Errorf("pancake upload API rejected content: %s", result.Message)
+	}
+	if strings.TrimSpace(result.ID) == "" {
+		return "", fmt.Errorf("pancake upload API did not return content id")
+	}
+
+	return result.ID, nil
+}
+
 func (s *PancakeService) sendMessagePayload(phone string, payload map[string]interface{}) error {
 	if s.cfg.PancakePageID == "" || s.cfg.PancakePageAccessToken == "" {
 		return fmt.Errorf("pancake configuration is not set")
@@ -141,6 +249,11 @@ func (s *PancakeService) sendMessagePayload(phone string, payload map[string]int
 	}
 
 	return nil
+}
+
+func escapeMultipartFilename(filename string) string {
+	replacer := strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+	return replacer.Replace(filename)
 }
 
 func normalizePancakePhone(phone string) string {

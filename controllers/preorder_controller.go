@@ -476,6 +476,7 @@ func (p PreorderController) UpdatePreorderStatus(c *gin.Context) {
 	}
 
 	var preorder models.Preorder
+	sendApprovalMessage := false
 	err := p.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Preload("Items").First(&preorder, preorderID).Error; err != nil {
 			return err
@@ -501,14 +502,7 @@ func (p PreorderController) UpdatePreorderStatus(c *gin.Context) {
 			if err := p.addPreorderCommissionToWallet(tx, preorder); err != nil {
 				return err
 			}
-			
-			// Send payment instructions via Pancake asynchronously
-			go func(po models.Preorder) {
-				pancakeSvc := services.NewPancakeService(p.cfg)
-				if err := pancakeSvc.SendPaymentInstructions(po); err != nil {
-					fmt.Printf("Failed to send WA message via Pancake: %v\n", err)
-				}
-			}(preorder)
+			sendApprovalMessage = true
 		}
 		return nil
 	})
@@ -523,6 +517,10 @@ func (p PreorderController) UpdatePreorderStatus(c *gin.Context) {
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to update preorder status", "error": err.Error()})
 		return
+	}
+
+	if sendApprovalMessage {
+		go p.sendApprovedPreorderWhatsApp(preorder.ID)
 	}
 
 	payload, _ := json.Marshal(gin.H{
@@ -540,6 +538,30 @@ func (p PreorderController) UpdatePreorderStatus(c *gin.Context) {
 
 	// For salesSSE notification or websocket compatibility we can just return
 	c.JSON(http.StatusOK, gin.H{"message": "preorder status updated", "preorder": preorder})
+}
+
+func (p PreorderController) sendApprovedPreorderWhatsApp(preorderID uint) {
+	var preorder models.Preorder
+	if err := p.db.Preload("Agent").Preload("Items").First(&preorder, preorderID).Error; err != nil {
+		fmt.Printf("Failed to load preorder for WA approval message: %v\n", err)
+		return
+	}
+
+	pancakeSvc := services.NewPancakeService(p.cfg)
+	if err := pancakeSvc.SendPaymentInstructions(preorder); err != nil {
+		fmt.Printf("Failed to send WA payment instructions via Pancake: %v\n", err)
+		return
+	}
+
+	pdfBytes, filename, err := buildPreorderPDFBytes(preorder)
+	if err != nil {
+		fmt.Printf("Failed to generate preorder invoice PDF for WA: %v\n", err)
+		return
+	}
+
+	if err := pancakeSvc.SendPreorderInvoice(preorder, pdfBytes, filename); err != nil {
+		fmt.Printf("Failed to send WA invoice PDF via Pancake: %v\n", err)
+	}
 }
 
 func (p PreorderController) StreamSalesNotifications(c *gin.Context) {
@@ -614,6 +636,17 @@ func (p PreorderController) GetPreorderPDF(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to generate PDF", "error": err.Error()})
 	}
+}
+
+func buildPreorderPDFBytes(preorder models.Preorder) ([]byte, string, error) {
+	var buffer bytes.Buffer
+	pdf := buildPreorderPDF(preorder)
+	if err := pdf.Output(&buffer); err != nil {
+		return nil, "", err
+	}
+
+	filename := fmt.Sprintf("%s.pdf", sanitizeIdentifier(preorder.PONumber))
+	return buffer.Bytes(), filename, nil
 }
 
 func buildPreorderPDF(preorder models.Preorder) *gofpdf.Fpdf {
@@ -1013,8 +1046,8 @@ func resolvePDFAssetPath(assetPath string) (string, bool) {
 
 func drawQuotationLetterhead(pdf *gofpdf.Fpdf) {
 	const (
-		assetW  = 297.0
-		assetH  = 69.4
+		assetW = 297.0
+		assetH = 69.4
 	)
 	pageW, _ := pdf.GetPageSize()
 	headerH := assetH * pageW / assetW
