@@ -87,9 +87,12 @@ func (s *PancakeService) SendPaymentInstructions(po models.Preorder) error {
 	}
 
 	if s.cfg.PancakeWATemplateID != "" {
-		return s.sendMessagePayload(phone, map[string]interface{}{
-			"action":      "reply_inbox",
-			"template_id": s.cfg.PancakeWATemplateID,
+		return s.SendTemplateMessage(phone, s.cfg.PancakeWATemplateID, map[string]interface{}{
+			"BODY_PARAMS": map[string]string{
+				"1": po.NamaCustomer,
+				"2": po.PONumber,
+				"3": fmt.Sprintf("Rp %d", po.Total),
+			},
 		})
 	}
 
@@ -236,7 +239,8 @@ func (s *PancakeService) sendMessagePayload(phone string, payload map[string]int
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("pancake API error, status: %d", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("pancake API error, status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	// Parse JSON response to check for "success": false
