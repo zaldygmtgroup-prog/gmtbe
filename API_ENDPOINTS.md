@@ -338,6 +338,7 @@ Body:
   "alamat": "Jl. Gatot Subroto No. 12",
   "no_hp": "081234567890",
   "catatan": "Butuh instalasi akhir bulan",
+  "payment_mode": "split",
   "items": [
     {
       "id_product": 1,
@@ -356,6 +357,7 @@ Body:
 Efek:
 
 - Status awal `draft`.
+- `payment_mode` opsional: `full`, `100%`, atau `100` untuk pembayaran 100% sekali kirim; dan `split`, `50%`, atau `50` untuk 50% DP dan 50% pelunasan. Default: `full`.
 - Sistem menghitung `subtotal`, `total_discount`, `total`, dan `total_komisi`.
 - Komisi belum masuk wallet saat status masih `draft`.
 
@@ -368,6 +370,8 @@ Response:
     "id": 12,
     "po_number": "INV/GMT/2026/06/0001",
     "status": "draft",
+    "payment_mode": "split",
+    "payment_status": "unpaid",
     "subtotal": 55000000,
     "total_discount": 3450000,
     "total": 51550000,
@@ -399,13 +403,9 @@ Efek:
 - Mengirim realtime event ke endpoint SSE sales.
 - Komisi belum masuk wallet saat status `in_review`.
 
-Rule:
-
-- Wajib upload bukti transfer terlebih dulu lewat `POST /api/preorders/:id/payment-proof`.
-
 ### `POST /api/preorders/:id/payment-proof`
 
-Dipakai untuk upload bukti transfer sebelum PO disubmit ke sales.
+Legacy endpoint untuk agent upload bukti transfer saat PO masih `draft`. Flow baru pembayaran customer sebaiknya memakai endpoint sales `POST /api/sales/preorders/:id/payment-proof`.
 
 Auth: wajib login sebagai `agent` official.
 
@@ -415,6 +415,7 @@ Field:
 
 ```text
 payment_proof: file jpg, jpeg, png, atau pdf
+stage: full, dp, atau remaining (opsional; default mengikuti payment_mode)
 ```
 
 Rule:
@@ -429,8 +430,11 @@ Response:
 {
   "message": "payment proof uploaded",
   "payment": {
-    "payment_status": "pending",
-    "payment_proof": "/uploads/payment_proofs/1781234567890.png"
+    "payment_status": "paid",
+    "stage": "full",
+    "payment_proof": "/uploads/payment_proofs/1781234567890.png",
+    "dp_proof": "",
+    "remaining_proof": ""
   }
 }
 ```
@@ -488,9 +492,63 @@ Efek:
 
 - Jika `approve`, komisi PO masuk ke wallet agent.
 - Jika `approve`, backend mengirim pesan WhatsApp ke customer melalui Pancake:
-  1. Instruksi pembayaran seperti sebelumnya.
+  1. Instruksi pembayaran tahap pertama. Untuk `payment_mode=full`, tagihan 100%. Untuk `payment_mode=split`, tagihan DP 50%.
   2. File invoice/quotation PDF dari PO tersebut.
 - Jika `invalid`, komisi tidak masuk wallet agent.
+
+### `POST /api/sales/preorders/:id/payment-quotation`
+
+Dipakai sales untuk mengirim quotation/tagihan pembayaran via Pancake.
+
+Auth: wajib login sebagai `sales`.
+
+Body:
+
+```json
+{
+  "stage": "remaining"
+}
+```
+
+Stage:
+
+- `full`: pembayaran 100%, hanya untuk `payment_mode=full`.
+- `dp`: pembayaran DP 50%, hanya untuk `payment_mode=split`.
+- `remaining`: pelunasan 50%, hanya untuk `payment_mode=split` dan bukti DP sudah diupload.
+
+Response:
+
+```json
+{
+  "message": "payment quotation sent",
+  "payment": {
+    "payment_mode": "split",
+    "stage": "remaining",
+    "amount": 25775000
+  }
+}
+```
+
+### `POST /api/sales/preorders/:id/payment-proof`
+
+Dipakai sales untuk upload bukti pembayaran customer.
+
+Auth: wajib login sebagai `sales`.
+
+Content-Type: `multipart/form-data`.
+
+Field:
+
+```text
+payment_proof: file jpg, jpeg, png, atau pdf
+stage: full, dp, atau remaining
+```
+
+Efek:
+
+- `stage=full`: menyimpan `payment_proof`, status pembayaran menjadi `paid`.
+- `stage=dp`: menyimpan `dp_proof`, status pembayaran menjadi `partial`.
+- `stage=remaining`: menyimpan `remaining_proof`, status pembayaran menjadi `paid`.
 
 Catatan pengiriman invoice WhatsApp:
 
@@ -1026,12 +1084,14 @@ Jika frontend mengirim `Authorization: Bearer <token>` yang valid, setiap item a
 valid, user dianggap guest dan `is_registered` bernilai `false`.
 
 Query opsional:
+
 - `?month=2026-06` (Filter berdasarkan bulan)
 - `?type=Offline` (Filter berdasarkan kategori acara)
 - `?status=Available` (Filter berdasarkan status acara)
 - `?page=1&limit=10` (Pagination)
 
 Response:
+
 ```json
 {
   "success": true,
@@ -1064,6 +1124,7 @@ Frontend boleh mengirim `Authorization: Bearer <token>`; jika token valid, respo
 apakah user sudah terdaftar pada event tersebut.
 
 Response:
+
 ```json
 {
   "success": true,
@@ -1101,6 +1162,7 @@ Dipakai untuk mendaftarkan pengguna yang sedang login ke acara tertentu.
 Auth: wajib login (mengirim `Authorization: Bearer <token>`).
 
 Body:
+
 ```json
 {
   "salutation": "Ms",
@@ -1130,6 +1192,7 @@ Body:
 ```
 
 Response Berhasil (201 Created):
+
 ```json
 {
   "success": true,
@@ -1144,5 +1207,6 @@ Response Berhasil (201 Created):
 ```
 
 Error Umum:
+
 - `400 Bad Request`: Validasi gagal (misalnya email tidak cocok atau belum setuju privacy policy).
 - `409 Conflict`: Slot acara sudah penuh atau pengguna sudah terdaftar sebelumnya.

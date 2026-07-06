@@ -155,6 +155,8 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 	sales.Use(middleware.AuthMiddleware(cfg, db), middleware.RoleMiddleware("sales"))
 	{
 		sales.PUT("/preorders/:id/status", preorderController.UpdatePreorderStatus)
+		sales.POST("/preorders/:id/payment-quotation", preorderController.SendPaymentQuotation)
+		sales.POST("/preorders/:id/payment-proof", preorderController.UploadSalesPaymentProof)
 		sales.GET("/notifications/stream", preorderController.StreamSalesNotifications)
 	}
 

@@ -80,10 +80,14 @@ func (s *PancakeService) SendPasswordResetToken(phone, name, token string, expir
 	return s.SendTextMessage(phone, message)
 }
 
-func (s *PancakeService) SendPaymentInstructions(po models.Preorder) error {
+func (s *PancakeService) SendPaymentInstructions(po models.Preorder, stage models.PaymentStage, amount int64) error {
 	phone := normalizePancakePhone(po.NoHP)
 	if phone == "" {
 		return fmt.Errorf("customer phone number is empty")
+	}
+	stageLabel := paymentStageLabel(stage)
+	if amount <= 0 {
+		amount = po.Total
 	}
 
 	if s.cfg.PancakeWATemplateID != "" {
@@ -91,13 +95,25 @@ func (s *PancakeService) SendPaymentInstructions(po models.Preorder) error {
 			"BODY_PARAMS": map[string]string{
 				"1": po.NamaCustomer,
 				"2": po.PONumber,
-				"3": fmt.Sprintf("Rp %d", po.Total),
+				"3": fmt.Sprintf("Rp %d", amount),
+				"4": stageLabel,
 			},
 		})
 	}
 
-	message := fmt.Sprintf("Halo %s,\n\nPreorder Anda dengan nomor %s telah disetujui. Total yang harus dibayar: Rp %d.\nSilakan balas pesan ini untuk mendapatkan informasi rekening dan cara pembayaran.\n\nTerima kasih.", po.NamaCustomer, po.PONumber, po.Total)
+	message := fmt.Sprintf("Halo %s,\n\nPreorder Anda dengan nomor %s telah disetujui. Tagihan %s yang harus dibayar: Rp %d.\nSilakan balas pesan ini untuk mendapatkan informasi rekening dan cara pembayaran.\n\nTerima kasih.", po.NamaCustomer, po.PONumber, stageLabel, amount)
 	return s.SendTextMessage(phone, message)
+}
+
+func paymentStageLabel(stage models.PaymentStage) string {
+	switch stage {
+	case models.PaymentStageDP:
+		return "DP 50%"
+	case models.PaymentStageRemaining:
+		return "pelunasan 50%"
+	default:
+		return "100%"
+	}
 }
 
 func (s *PancakeService) SendDocumentMessage(phone, contentID, filename string) error {

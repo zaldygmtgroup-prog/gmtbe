@@ -51,12 +51,13 @@ type preorderItemReq struct {
 }
 
 type createPreorderReq struct {
-	NamaCustomer string            `json:"nama_customer" binding:"required,max=255"`
-	Email        string            `json:"email" binding:"required,email"`
-	Alamat       string            `json:"alamat" binding:"required"`
-	NoHP         string            `json:"no_hp" binding:"required,max=50"`
-	Catatan      string            `json:"catatan"`
-	Items        []preorderItemReq `json:"items" binding:"required,min=1"`
+	NamaCustomer string             `json:"nama_customer" binding:"required,max=255"`
+	Email        string             `json:"email" binding:"required,email"`
+	Alamat       string             `json:"alamat" binding:"required"`
+	NoHP         string             `json:"no_hp" binding:"required,max=50"`
+	Catatan      string             `json:"catatan"`
+	PaymentMode  models.PaymentMode `json:"payment_mode"`
+	Items        []preorderItemReq  `json:"items" binding:"required,min=1"`
 }
 
 type updatePreorderStatusRequest struct {
@@ -64,10 +65,19 @@ type updatePreorderStatusRequest struct {
 	InvalidReason *string               `json:"invalid_reason"`
 }
 
+type sendPaymentQuotationRequest struct {
+	Stage models.PaymentStage `json:"stage" binding:"required"`
+}
+
 func (p PreorderController) CreatePreorder(c *gin.Context) {
 	var req createPreorderReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "error": err.Error()})
+		return
+	}
+	paymentMode := normalizePaymentMode(req.PaymentMode)
+	if !isValidPaymentMode(paymentMode) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "payment_mode must be full, split, 50%, or 100%"})
 		return
 	}
 
@@ -81,6 +91,7 @@ func (p PreorderController) CreatePreorder(c *gin.Context) {
 		NoHP:         req.NoHP,
 		Catatan:      req.Catatan,
 		Status:       models.PreorderStatusDraft,
+		PaymentMode:  paymentMode,
 	}
 
 	var items []models.PreorderItem
@@ -163,6 +174,7 @@ func (p PreorderController) CreatePreorder(c *gin.Context) {
 			"id":             preorder.ID,
 			"po_number":      preorder.PONumber,
 			"status":         preorder.Status,
+			"payment_mode":   preorder.PaymentMode,
 			"payment_status": preorder.PaymentStatus,
 			"subtotal":       preorder.Subtotal,
 			"total_discount": preorder.TotalDiscount,
@@ -244,6 +256,11 @@ func (p PreorderController) UpdatePreorder(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "error": err.Error()})
 		return
 	}
+	paymentMode := normalizePaymentMode(req.PaymentMode)
+	if !isValidPaymentMode(paymentMode) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "payment_mode must be full, split, 50%, or 100%"})
+		return
+	}
 
 	agentID := c.GetUint("user_id")
 	var preorder models.Preorder
@@ -314,8 +331,12 @@ func (p PreorderController) UpdatePreorder(c *gin.Context) {
 		preorder.TotalDiscount = totalDiscount
 		preorder.Total = total
 		preorder.TotalKomisi = totalKomisi
+		preorder.PaymentMode = paymentMode
 		preorder.PaymentStatus = models.PaymentStatusUnpaid
 		preorder.PaymentProof = ""
+		preorder.DPProof = ""
+		preorder.RemainingProof = ""
+		preorder.LastPaymentStage = ""
 
 		if err := tx.Omit("Items").Save(&preorder).Error; err != nil {
 			return err
@@ -558,8 +579,12 @@ func (p PreorderController) sendApprovedPreorderWhatsApp(preorderID uint) error 
 	}
 
 	pancakeSvc := services.NewPancakeService(p.cfg)
-	if err := pancakeSvc.SendPaymentInstructions(preorder); err != nil {
-		return fmt.Errorf("failed to send payment instructions via Pancake: %w", err)
+	stage := firstPaymentStage(preorder.PaymentMode)
+	if err := p.sendPaymentQuotation(preorder, stage, pancakeSvc); err != nil {
+		return err
+	}
+	if err := p.db.Model(&preorder).Update("last_payment_stage", string(stage)).Error; err != nil {
+		return fmt.Errorf("failed to update payment quotation stage: %w", err)
 	}
 
 	pdfBytes, filename, err := buildPreorderPDFBytes(preorder)
@@ -571,6 +596,76 @@ func (p PreorderController) sendApprovedPreorderWhatsApp(preorderID uint) error 
 		return fmt.Errorf("failed to send invoice PDF via Pancake: %w", err)
 	}
 	return nil
+}
+
+func (p PreorderController) sendPaymentQuotation(preorder models.Preorder, stage models.PaymentStage, pancakeSvc *services.PancakeService) error {
+	amount, err := paymentAmountForStage(preorder, stage)
+	if err != nil {
+		return err
+	}
+	if err := pancakeSvc.SendPaymentInstructions(preorder, stage, amount); err != nil {
+		return fmt.Errorf("failed to send payment instructions via Pancake: %w", err)
+	}
+
+	return nil
+}
+
+func (p PreorderController) SendPaymentQuotation(c *gin.Context) {
+	preorderID, ok := parseUintParam(c, "id", "invalid preorder id")
+	if !ok {
+		return
+	}
+
+	var req sendPaymentQuotationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "error": err.Error()})
+		return
+	}
+	req.Stage = models.PaymentStage(strings.ToLower(strings.TrimSpace(string(req.Stage))))
+	if !isValidPaymentStage(req.Stage) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "stage must be full, dp, or remaining"})
+		return
+	}
+
+	var preorder models.Preorder
+	if err := p.db.Preload("Agent").Preload("Items").First(&preorder, preorderID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"message": "preorder not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to get preorder"})
+		return
+	}
+	if preorder.Status != models.PreorderStatusApprove {
+		c.JSON(http.StatusConflict, gin.H{"message": "only approved preorder can receive payment quotation"})
+		return
+	}
+	if err := validatePaymentStageForPreorder(preorder, req.Stage); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"message": err.Error()})
+		return
+	}
+
+	pancakeSvc := services.NewPancakeService(p.cfg)
+	if err := p.sendPaymentQuotation(preorder, req.Stage, pancakeSvc); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to send payment quotation", "error": err.Error()})
+		return
+	}
+
+	if err := p.db.Model(&preorder).Update("last_payment_stage", string(req.Stage)).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "payment quotation sent, but failed to update preorder", "error": err.Error()})
+		return
+	}
+	preorder.LastPaymentStage = string(req.Stage)
+
+	amount, _ := paymentAmountForStage(preorder, req.Stage)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "payment quotation sent",
+		"payment": gin.H{
+			"payment_mode": preorder.PaymentMode,
+			"stage":        req.Stage,
+			"amount":       amount,
+		},
+	})
 }
 
 func (p PreorderController) StreamSalesNotifications(c *gin.Context) {
@@ -733,6 +828,15 @@ func (p PreorderController) UploadPaymentProof(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"message": "only draft preorder can upload payment proof"})
 		return
 	}
+	stage := paymentStageFromRequest(c, firstPaymentStage(preorder.PaymentMode))
+	if !isValidPaymentStage(stage) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "stage must be full, dp, or remaining"})
+		return
+	}
+	if err := validatePaymentStageForPreorder(preorder, stage); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"message": err.Error()})
+		return
+	}
 
 	proofPath, err := saveRequiredTransferProofUpload(c, p.cfg.UploadDir, "payment_proof", "payment_proofs")
 	if err != nil {
@@ -740,13 +844,9 @@ func (p PreorderController) UploadPaymentProof(c *gin.Context) {
 		return
 	}
 
-	preorder.PaymentProof = proofPath
-	preorder.PaymentStatus = models.PaymentStatusPending
-
-	if err := p.db.Model(&preorder).Updates(map[string]interface{}{
-		"payment_proof":  proofPath,
-		"payment_status": models.PaymentStatusPending,
-	}).Error; err != nil {
+	updates := paymentProofUpdates(stage, proofPath)
+	applyPaymentProofToPreorder(&preorder, stage, proofPath)
+	if err := p.db.Model(&preorder).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to upload payment proof", "error": err.Error()})
 		return
 	}
@@ -754,8 +854,80 @@ func (p PreorderController) UploadPaymentProof(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "payment proof uploaded",
 		"payment": gin.H{
-			"payment_status": preorder.PaymentStatus,
-			"payment_proof":  preorder.PaymentProof,
+			"payment_status":  preorder.PaymentStatus,
+			"stage":           stage,
+			"payment_proof":   preorder.PaymentProof,
+			"dp_proof":        preorder.DPProof,
+			"remaining_proof": preorder.RemainingProof,
+		},
+	})
+}
+
+func (p PreorderController) UploadSalesPaymentProof(c *gin.Context) {
+	preorderID, ok := parseUintParam(c, "id", "invalid preorder id")
+	if !ok {
+		return
+	}
+
+	var preorder models.Preorder
+	if err := p.db.First(&preorder, preorderID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"message": "preorder not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to get preorder"})
+		return
+	}
+	if preorder.Status != models.PreorderStatusApprove {
+		c.JSON(http.StatusConflict, gin.H{"message": "only approved preorder can upload payment proof"})
+		return
+	}
+
+	stage := paymentStageFromRequest(c, firstPaymentStage(preorder.PaymentMode))
+	if !isValidPaymentStage(stage) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "stage must be full, dp, or remaining"})
+		return
+	}
+	if err := validatePaymentStageForPreorder(preorder, stage); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"message": err.Error()})
+		return
+	}
+
+	proofPath, err := saveRequiredTransferProofUpload(c, p.cfg.UploadDir, "payment_proof", "payment_proofs")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid payment_proof", "error": err.Error()})
+		return
+	}
+
+	updates := paymentProofUpdates(stage, proofPath)
+	applyPaymentProofToPreorder(&preorder, stage, proofPath)
+	if err := p.db.Model(&preorder).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to upload payment proof", "error": err.Error()})
+		return
+	}
+
+	payload, _ := json.Marshal(gin.H{
+		"id":             preorder.ID,
+		"po_number":      preorder.PONumber,
+		"status":         preorder.Status,
+		"payment_mode":   preorder.PaymentMode,
+		"payment_status": preorder.PaymentStatus,
+		"stage":          stage,
+	})
+	p.hub.Publish(services.NotificationEvent{
+		Role: fmt.Sprintf("agent_%d_preorders", preorder.IDAgent),
+		Data: string(payload),
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "payment proof uploaded",
+		"payment": gin.H{
+			"payment_mode":    preorder.PaymentMode,
+			"payment_status":  preorder.PaymentStatus,
+			"stage":           stage,
+			"payment_proof":   preorder.PaymentProof,
+			"dp_proof":        preorder.DPProof,
+			"remaining_proof": preorder.RemainingProof,
 		},
 	})
 }
@@ -1190,6 +1362,111 @@ func nextPONumber(tx *gorm.DB, now time.Time) (string, error) {
 func sanitizeIdentifier(value string) string {
 	replacer := strings.NewReplacer("/", "-", "\\", "-", " ", "-")
 	return replacer.Replace(value)
+}
+
+func normalizePaymentMode(mode models.PaymentMode) models.PaymentMode {
+	val := strings.ToLower(strings.TrimSpace(string(mode)))
+	if val == "" || val == "full" || val == "100%" || val == "100" {
+		return models.PaymentModeFull
+	}
+	if val == "split" || val == "50%" || val == "50" {
+		return models.PaymentModeSplit
+	}
+	return models.PaymentMode(val)
+}
+
+func isValidPaymentMode(mode models.PaymentMode) bool {
+	return mode == models.PaymentModeFull || mode == models.PaymentModeSplit
+}
+
+func isValidPaymentStage(stage models.PaymentStage) bool {
+	return stage == models.PaymentStageFull || stage == models.PaymentStageDP || stage == models.PaymentStageRemaining
+}
+
+func firstPaymentStage(mode models.PaymentMode) models.PaymentStage {
+	if mode == models.PaymentModeSplit {
+		return models.PaymentStageDP
+	}
+	return models.PaymentStageFull
+}
+
+func paymentStageFromRequest(c *gin.Context, fallback models.PaymentStage) models.PaymentStage {
+	stage := strings.TrimSpace(c.PostForm("stage"))
+	if stage == "" {
+		stage = strings.TrimSpace(c.Query("stage"))
+	}
+	if stage == "" {
+		return fallback
+	}
+	return models.PaymentStage(strings.ToLower(stage))
+}
+
+func validatePaymentStageForPreorder(preorder models.Preorder, stage models.PaymentStage) error {
+	mode := normalizePaymentMode(preorder.PaymentMode)
+	if mode == models.PaymentModeFull {
+		if stage != models.PaymentStageFull {
+			return fmt.Errorf("full payment preorder only accepts full payment stage")
+		}
+		return nil
+	}
+
+	switch stage {
+	case models.PaymentStageDP:
+		return nil
+	case models.PaymentStageRemaining:
+		if strings.TrimSpace(preorder.DPProof) == "" {
+			return fmt.Errorf("dp payment proof must be uploaded before remaining payment")
+		}
+		return nil
+	default:
+		return fmt.Errorf("split payment preorder only accepts dp or remaining payment stage")
+	}
+}
+
+func paymentAmountForStage(preorder models.Preorder, stage models.PaymentStage) (int64, error) {
+	if err := validatePaymentStageForPreorder(preorder, stage); err != nil {
+		return 0, err
+	}
+	if stage == models.PaymentStageDP {
+		return preorder.Total / 2, nil
+	}
+	if stage == models.PaymentStageRemaining {
+		return preorder.Total - preorder.Total/2, nil
+	}
+	return preorder.Total, nil
+}
+
+func paymentProofUpdates(stage models.PaymentStage, proofPath string) map[string]interface{} {
+	updates := map[string]interface{}{
+		"last_payment_stage": string(stage),
+	}
+	switch stage {
+	case models.PaymentStageDP:
+		updates["dp_proof"] = proofPath
+		updates["payment_status"] = models.PaymentStatusPartial
+	case models.PaymentStageRemaining:
+		updates["remaining_proof"] = proofPath
+		updates["payment_status"] = models.PaymentStatusPaid
+	default:
+		updates["payment_proof"] = proofPath
+		updates["payment_status"] = models.PaymentStatusPaid
+	}
+	return updates
+}
+
+func applyPaymentProofToPreorder(preorder *models.Preorder, stage models.PaymentStage, proofPath string) {
+	preorder.LastPaymentStage = string(stage)
+	switch stage {
+	case models.PaymentStageDP:
+		preorder.DPProof = proofPath
+		preorder.PaymentStatus = models.PaymentStatusPartial
+	case models.PaymentStageRemaining:
+		preorder.RemainingProof = proofPath
+		preorder.PaymentStatus = models.PaymentStatusPaid
+	default:
+		preorder.PaymentProof = proofPath
+		preorder.PaymentStatus = models.PaymentStatusPaid
+	}
 }
 
 func parseUintParam(c *gin.Context, name, message string) (uint, bool) {

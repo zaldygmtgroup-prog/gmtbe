@@ -128,6 +128,68 @@ func TestPreorderMultiProductAndWithdraw(t *testing.T) {
 		}
 	})
 
+	t.Run("CreatePreorder - Payment Modes Normalization", func(t *testing.T) {
+		r := gin.New()
+		r.Use(func(c *gin.Context) {
+			c.Set("user_id", agentUser.ID)
+			c.Next()
+		})
+		r.POST("/api/preorders", preorderCtrl.CreatePreorder)
+
+		testCases := []struct {
+			inputMode    string
+			expectedMode string
+			expectedCode int
+		}{
+			{"50%", "split", http.StatusCreated},
+			{"50", "split", http.StatusCreated},
+			{"100%", "full", http.StatusCreated},
+			{"100", "full", http.StatusCreated},
+			{"invalid", "", http.StatusBadRequest},
+		}
+
+		for _, tc := range testCases {
+			body := map[string]interface{}{
+				"nama_customer": "Test Customer",
+				"email":         "cust@test.com",
+				"alamat":        "Jl. Test No. 1",
+				"no_hp":         "0811223344",
+				"payment_mode":  tc.inputMode,
+				"items": []map[string]interface{}{
+					{
+						"id_product":       p1.IDProduct,
+						"qty":              1,
+						"discount_percent": 0.0,
+					},
+				},
+			}
+			b, _ := json.Marshal(body)
+
+			req, _ := http.NewRequest("POST", "/api/preorders", bytes.NewBuffer(b))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			if w.Code != tc.expectedCode {
+				t.Errorf("for input %q: expected status %d, got %d: %s", tc.inputMode, tc.expectedCode, w.Code, w.Body.String())
+				continue
+			}
+
+			if tc.expectedCode == http.StatusCreated {
+				var resp map[string]interface{}
+				json.Unmarshal(w.Body.Bytes(), &resp)
+				po := resp["preorder"].(map[string]interface{})
+				if po["payment_mode"].(string) != tc.expectedMode {
+					t.Errorf("for input %q: expected payment_mode %q, got %q", tc.inputMode, tc.expectedMode, po["payment_mode"])
+				}
+			} else {
+				if !strings.Contains(w.Body.String(), "payment_mode must be full, split, 50%, or 100%") {
+					t.Errorf("expected error message with options, got: %s", w.Body.String())
+				}
+			}
+		}
+	})
+
 	// 2. Test GetPreorder details with items list
 	t.Run("GetPreorder - Includes Items", func(t *testing.T) {
 		r := gin.New()

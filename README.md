@@ -382,11 +382,12 @@ Body:
   "email": "customer@example.com",
   "alamat": "Jl. Customer No. 1",
   "no_hp": "081234567890",
-  "catatan": "Catatan tambahan"
+  "catatan": "Catatan tambahan",
+  "payment_mode": "split"
 }
 ```
 
-Sistem menghitung otomatis `subtotal`, `total_komisi`, dan `total`. Status awal adalah `draft`.
+Sistem menghitung otomatis `subtotal`, `total_komisi`, dan `total`. Status awal adalah `draft`. `payment_mode` opsional: `full`, `100%`, atau `100` untuk pembayaran 100% sekali kirim; dan `split`, `50%`, atau `50` untuk 50% DP dan 50% pelunasan.
 
 ### List dan Search PO
 
@@ -490,7 +491,32 @@ Invalid:
 }
 ```
 
-Jika status menjadi `approve`, `total_komisi` PO masuk ke wallet agent dan tercatat di `agent_commissions`.
+Jika status menjadi `approve`, `total_komisi` PO masuk ke wallet agent dan tercatat di `agent_commissions`. Backend juga mengirim tagihan pertama via Pancake: 100% untuk `payment_mode=full`, atau DP 50% untuk `payment_mode=split`.
+
+### Kirim Quotation Pembayaran Oleh Sales
+
+`POST /api/sales/preorders/:id/payment-quotation`
+
+Body:
+
+```json
+{
+  "stage": "remaining"
+}
+```
+
+`stage` tersedia: `full`, `dp`, atau `remaining`. Untuk mode `split`, sales dapat mengirim `dp` terlebih dahulu lalu `remaining` setelah bukti DP diupload.
+
+### Upload Bukti Pembayaran Oleh Sales
+
+`POST /api/sales/preorders/:id/payment-proof`
+
+Content-Type: `multipart/form-data`.
+
+```text
+payment_proof: file jpg, jpeg, png, atau pdf
+stage: full, dp, atau remaining
+```
 
 Migrasi manual preorder:
 
