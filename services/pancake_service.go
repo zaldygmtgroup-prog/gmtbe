@@ -91,12 +91,15 @@ func (s *PancakeService) SendPaymentInstructions(po models.Preorder, stage model
 	}
 
 	if s.cfg.PancakeWATemplateID != "" {
+		amountText := fmt.Sprintf("Rp %d", amount)
+		if stage == models.PaymentStageDP || stage == models.PaymentStageRemaining {
+			amountText = fmt.Sprintf("Rp %d (%s)", amount, stageLabel)
+		}
 		return s.SendTemplateMessage(phone, s.cfg.PancakeWATemplateID, map[string]interface{}{
 			"BODY_PARAMS": map[string]string{
 				"1": po.NamaCustomer,
 				"2": po.PONumber,
-				"3": fmt.Sprintf("Rp %d", amount),
-				"4": stageLabel,
+				"3": amountText,
 			},
 		})
 	}
