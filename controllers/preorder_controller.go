@@ -1103,8 +1103,19 @@ func drawRemoteProductImage(pdf *gofpdf.Fpdf, imageURL string, x, y, maxW, maxH 
 		return false
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 5<<20))
+	limit := int64(20 << 20) // 20 MB limit
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil || len(body) == 0 {
+		return false
+	}
+	if int64(len(body)) > limit {
+		// Truncated / too large, skip
+		return false
+	}
+
+	// Validate that the image can actually be decoded to prevent PDF generation crash
+	_, _, err = image.DecodeConfig(bytes.NewReader(body))
+	if err != nil {
 		return false
 	}
 
@@ -1127,7 +1138,10 @@ func drawRemoteProductImage(pdf *gofpdf.Fpdf, imageURL string, x, y, maxW, maxH 
 func drawLocalImageFit(pdf *gofpdf.Fpdf, path string, x, y, maxW, maxH float64) {
 	body, err := os.ReadFile(path)
 	if err != nil {
-		pdf.ImageOptions(path, x, y, maxW, maxH, false, gofpdf.ImageOptions{}, 0, "")
+		return
+	}
+	_, _, err = image.DecodeConfig(bytes.NewReader(body))
+	if err != nil {
 		return
 	}
 	drawW, drawH, drawX, drawY := fitImageBox(body, x, y, maxW, maxH)

@@ -90,10 +90,12 @@ func (s *PancakeService) SendPaymentInstructions(po models.Preorder, stage model
 		amount = po.Total
 	}
 
+	formattedAmount := formatRupiah(amount)
+
 	if s.cfg.PancakeWATemplateID != "" {
-		amountText := fmt.Sprintf("Rp %d", amount)
+		amountText := formattedAmount
 		if stage == models.PaymentStageDP || stage == models.PaymentStageRemaining {
-			amountText = fmt.Sprintf("Rp %d (%s)", amount, stageLabel)
+			amountText = fmt.Sprintf("%s (%s)", formattedAmount, stageLabel)
 		}
 		return s.SendTemplateMessage(phone, s.cfg.PancakeWATemplateID, map[string]interface{}{
 			"BODY_PARAMS": map[string]string{
@@ -104,7 +106,7 @@ func (s *PancakeService) SendPaymentInstructions(po models.Preorder, stage model
 		})
 	}
 
-	message := fmt.Sprintf("Halo %s,\n\nPreorder Anda dengan nomor %s telah disetujui. Tagihan %s yang harus dibayar: Rp %d.\nSilakan balas pesan ini untuk mendapatkan informasi rekening dan cara pembayaran.\n\nTerima kasih.", po.NamaCustomer, po.PONumber, stageLabel, amount)
+	message := fmt.Sprintf("Halo %s,\n\nPreorder Anda dengan nomor %s telah disetujui. Tagihan %s yang harus dibayar: %s.\nSilakan balas pesan ini untuk mendapatkan informasi rekening dan cara pembayaran.\n\nTerima kasih.", po.NamaCustomer, po.PONumber, stageLabel, formattedAmount)
 	return s.SendTextMessage(phone, message)
 }
 
@@ -296,4 +298,20 @@ func normalizePancakePhone(phone string) string {
 	}
 
 	return phone
+}
+
+func formatRupiah(value int64) string {
+	sign := ""
+	if value < 0 {
+		sign = "-"
+		value = -value
+	}
+	raw := strconv.FormatInt(value, 10)
+	var parts []string
+	for len(raw) > 3 {
+		parts = append([]string{raw[len(raw)-3:]}, parts...)
+		raw = raw[:len(raw)-3]
+	}
+	parts = append([]string{raw}, parts...)
+	return fmt.Sprintf("%sRp %s", sign, strings.Join(parts, "."))
 }
