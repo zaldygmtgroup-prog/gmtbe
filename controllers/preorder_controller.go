@@ -542,7 +542,8 @@ func (p PreorderController) UpdatePreorderStatus(c *gin.Context) {
 
 	var sendErrMsg string
 	if sendApprovalMessage {
-		if err := p.sendApprovedPreorderWhatsApp(preorder.ID); err != nil {
+		baseURL := getBaseURL(c)
+		if err := p.sendApprovedPreorderWhatsApp(preorder.ID, baseURL); err != nil {
 			sendErrMsg = err.Error()
 		}
 	}
@@ -572,7 +573,15 @@ func (p PreorderController) UpdatePreorderStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-func (p PreorderController) sendApprovedPreorderWhatsApp(preorderID uint) error {
+func getBaseURL(c *gin.Context) string {
+	scheme := "http"
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s", scheme, c.Request.Host)
+}
+
+func (p PreorderController) sendApprovedPreorderWhatsApp(preorderID uint, baseURL string) error {
 	var preorder models.Preorder
 	if err := p.db.Preload("Agent").Preload("Items").First(&preorder, preorderID).Error; err != nil {
 		return fmt.Errorf("failed to load preorder: %w", err)
@@ -580,34 +589,60 @@ func (p PreorderController) sendApprovedPreorderWhatsApp(preorderID uint) error 
 
 	pancakeSvc := services.NewPancakeService(p.cfg)
 	stage := firstPaymentStage(preorder.PaymentMode)
-	if err := p.sendPaymentQuotation(preorder, stage, pancakeSvc); err != nil {
+
+	isMediaTemplate := (p.cfg.PancakeWATemplateID == "1523095815953461")
+
+	var pdfURL string
+	var pdfBytes []byte
+	var filename string
+	var err error
+
+	pdfBytes, filename, err = buildPreorderPDFBytes(preorder)
+	if err != nil {
+		return fmt.Errorf("failed to generate preorder invoice PDF: %w", err)
+	}
+
+	if isMediaTemplate {
+		publicDir := filepath.Join(p.cfg.UploadDir, "preorders")
+		if err := os.MkdirAll(publicDir, 0755); err != nil {
+			return fmt.Errorf("failed to create preorders upload directory: %w", err)
+		}
+		destPath := filepath.Join(publicDir, fmt.Sprintf("invoice_%d.pdf", preorder.ID))
+		if err := os.WriteFile(destPath, pdfBytes, 0644); err != nil {
+			return fmt.Errorf("failed to save preorder invoice locally: %w", err)
+		}
+		pdfURL = fmt.Sprintf("%s/uploads/preorders/invoice_%d.pdf", baseURL, preorder.ID)
+	}
+
+	if err := p.sendPaymentQuotationWithURL(preorder, stage, pancakeSvc, pdfURL); err != nil {
 		return err
 	}
 	if err := p.db.Model(&preorder).Update("last_payment_stage", string(stage)).Error; err != nil {
 		return fmt.Errorf("failed to update payment quotation stage: %w", err)
 	}
 
-	pdfBytes, filename, err := buildPreorderPDFBytes(preorder)
-	if err != nil {
-		return fmt.Errorf("failed to generate preorder invoice PDF: %w", err)
-	}
-
-	if err := pancakeSvc.SendPreorderInvoice(preorder, pdfBytes, filename); err != nil {
-		return fmt.Errorf("failed to send invoice PDF via Pancake: %w", err)
+	if !isMediaTemplate {
+		if err := pancakeSvc.SendPreorderInvoice(preorder, pdfBytes, filename); err != nil {
+			return fmt.Errorf("failed to send invoice PDF via Pancake: %w", err)
+		}
 	}
 	return nil
 }
 
-func (p PreorderController) sendPaymentQuotation(preorder models.Preorder, stage models.PaymentStage, pancakeSvc *services.PancakeService) error {
+func (p PreorderController) sendPaymentQuotationWithURL(preorder models.Preorder, stage models.PaymentStage, pancakeSvc *services.PancakeService, pdfURL string) error {
 	amount, err := paymentAmountForStage(preorder, stage)
 	if err != nil {
 		return err
 	}
-	if err := pancakeSvc.SendPaymentInstructions(preorder, stage, amount); err != nil {
+	if err := pancakeSvc.SendPaymentInstructions(preorder, stage, amount, pdfURL); err != nil {
 		return fmt.Errorf("failed to send payment instructions via Pancake: %w", err)
 	}
 
 	return nil
+}
+
+func (p PreorderController) sendPaymentQuotation(preorder models.Preorder, stage models.PaymentStage, pancakeSvc *services.PancakeService) error {
+	return p.sendPaymentQuotationWithURL(preorder, stage, pancakeSvc, "")
 }
 
 func (p PreorderController) SendPaymentQuotation(c *gin.Context) {
@@ -646,7 +681,23 @@ func (p PreorderController) SendPaymentQuotation(c *gin.Context) {
 	}
 
 	pancakeSvc := services.NewPancakeService(p.cfg)
-	if err := p.sendPaymentQuotation(preorder, req.Stage, pancakeSvc); err != nil {
+	isMediaTemplate := (p.cfg.PancakeWATemplateID == "1523095815953461")
+	var pdfURL string
+	if isMediaTemplate {
+		baseURL := getBaseURL(c)
+		publicDir := filepath.Join(p.cfg.UploadDir, "preorders")
+		destPath := filepath.Join(publicDir, fmt.Sprintf("invoice_%d.pdf", preorder.ID))
+		if _, err := os.Stat(destPath); os.IsNotExist(err) {
+			pdfBytes, _, err := buildPreorderPDFBytes(preorder)
+			if err == nil {
+				_ = os.MkdirAll(publicDir, 0755)
+				_ = os.WriteFile(destPath, pdfBytes, 0644)
+			}
+		}
+		pdfURL = fmt.Sprintf("%s/uploads/preorders/invoice_%d.pdf", baseURL, preorder.ID)
+	}
+
+	if err := p.sendPaymentQuotationWithURL(preorder, req.Stage, pancakeSvc, pdfURL); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to send payment quotation", "error": err.Error()})
 		return
 	}

@@ -80,7 +80,7 @@ func (s *PancakeService) SendPasswordResetToken(phone, name, token string, expir
 	return s.SendTextMessage(phone, message)
 }
 
-func (s *PancakeService) SendPaymentInstructions(po models.Preorder, stage models.PaymentStage, amount int64) error {
+func (s *PancakeService) SendPaymentInstructions(po models.Preorder, stage models.PaymentStage, amount int64, pdfURL string) error {
 	phone := normalizePancakePhone(po.NoHP)
 	if phone == "" {
 		return fmt.Errorf("customer phone number is empty")
@@ -97,13 +97,26 @@ func (s *PancakeService) SendPaymentInstructions(po models.Preorder, stage model
 		if stage == models.PaymentStageDP || stage == models.PaymentStageRemaining {
 			amountText = fmt.Sprintf("%s (%s)", formattedAmount, stageLabel)
 		}
-		return s.SendTemplateMessage(phone, s.cfg.PancakeWATemplateID, map[string]interface{}{
+
+		templateParams := map[string]interface{}{
 			"BODY_PARAMS": map[string]string{
 				"1": po.NamaCustomer,
 				"2": po.PONumber,
 				"3": amountText,
 			},
-		})
+		}
+
+		if pdfURL != "" {
+			safePONumber := strings.ReplaceAll(po.PONumber, "/", "_")
+			templateParams["HEADER_PARAMS"] = map[string]interface{}{
+				"DOCUMENT": map[string]string{
+					"url":  pdfURL,
+					"name": fmt.Sprintf("%s.pdf", safePONumber),
+				},
+			}
+		}
+
+		return s.SendTemplateMessage(phone, s.cfg.PancakeWATemplateID, templateParams)
 	}
 
 	message := fmt.Sprintf("Halo %s,\n\nPreorder Anda dengan nomor %s telah disetujui. Tagihan %s yang harus dibayar: %s.\nSilakan balas pesan ini untuk mendapatkan informasi rekening dan cara pembayaran.\n\nTerima kasih.", po.NamaCustomer, po.PONumber, stageLabel, formattedAmount)
