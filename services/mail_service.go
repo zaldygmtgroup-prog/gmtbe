@@ -76,7 +76,7 @@ func (s MailService) sendWithSMTP(toEmail, toName, token string) error {
 	`, toName, token, s.cfg.ResetTokenExpiresMinutes))
 
 	dialer := gomail.NewDialer(s.cfg.MailHost, s.cfg.MailPort, s.cfg.MailUsername, s.cfg.MailPassword)
-	if s.cfg.MailScheme == "smtps" {
+	if s.cfg.MailScheme == "smtps" || s.cfg.MailPort == 465 {
 		dialer.SSL = true
 	} else if s.cfg.MailScheme == "smtp" {
 		dialer.SSL = false
