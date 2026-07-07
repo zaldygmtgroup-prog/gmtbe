@@ -69,9 +69,12 @@ func (s *PancakeService) SendPasswordResetToken(phone, name, token string, expir
 	if s.cfg.PancakeResetTemplateID != "" {
 		return s.SendTemplateMessage(phone, s.cfg.PancakeResetTemplateID, map[string]interface{}{
 			"BODY_PARAMS": map[string]string{
-				"name":            name,
-				"token":           token,
-				"expires_minutes": strconv.Itoa(expiresMinutes),
+				"1": token,
+			},
+			"BUTTON_PARAMS": map[string]interface{}{
+				"0": map[string]string{
+					"coupon_code": token,
+				},
 			},
 		})
 	}

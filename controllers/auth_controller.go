@@ -21,16 +21,16 @@ import (
 )
 
 type AuthController struct {
-	cfg            config.Config
-	db             *gorm.DB
-	pancakeService *services.PancakeService
+	cfg         config.Config
+	db          *gorm.DB
+	mailService services.MailService
 }
 
 func NewAuthController(cfg config.Config, db *gorm.DB) AuthController {
 	return AuthController{
-		cfg:            cfg,
-		db:             db,
-		pancakeService: services.NewPancakeService(cfg),
+		cfg:         cfg,
+		db:          db,
+		mailService: services.NewMailService(cfg),
 	}
 }
 
@@ -424,12 +424,12 @@ func (a AuthController) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	if err := a.pancakeService.SendPasswordResetToken(user.PhoneNumber, user.Name, token, a.cfg.ResetTokenExpiresMinutes); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to send reset token whatsapp", "error": err.Error()})
+	if err := a.mailService.SendPasswordResetToken(user.Email, user.Name, token); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to send reset token email", "error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "reset token sent to whatsapp"})
+	c.JSON(http.StatusOK, gin.H{"message": "reset token sent to email"})
 }
 
 func (a AuthController) VerifyResetToken(c *gin.Context) {

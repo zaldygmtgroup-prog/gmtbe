@@ -134,7 +134,7 @@ Catatan:
 
 ### `POST /api/auth/forgot-password`
 
-Dipakai untuk fitur lupa password tahap pertama: cek email dan kirim token reset ke WhatsApp melalui Pancake.
+Dipakai untuk fitur lupa password tahap pertama: cek email dan kirim token reset ke email user.
 
 Body:
 
@@ -144,7 +144,7 @@ Body:
 }
 ```
 
-Jika email terdaftar, sistem membuat token 6 digit dan mengirimkannya ke nomor WhatsApp user. Untuk pengiriman di luar window 24 jam WhatsApp, backend harus memakai template reset password Pancake/WhatsApp yang sudah approved melalui env `PANCAKE_RESET_PASSWORD_TEMPLATE_ID`.
+Jika email terdaftar, sistem membuat token 6 digit dan mengirimkannya ke email user. Validasi user dan verifikasi token tetap menggunakan `email`.
 
 ### `POST /api/auth/verify-reset-token`
 
@@ -209,6 +209,8 @@ Efek:
 
 ## Products
 
+Auth: wajib login.
+
 ### `GET /api/products`
 
 Dipakai untuk fitur list product.
@@ -260,8 +262,6 @@ GET /api/products/1
 
 Dipakai untuk fitur tambah product.
 
-Untuk sementara endpoint ini belum dibatasi role.
-
 Body:
 
 ```json
@@ -280,8 +280,6 @@ Body:
 
 Dipakai untuk fitur edit product.
 
-Untuk sementara endpoint ini belum dibatasi role.
-
 Body:
 
 ```json
@@ -297,8 +295,6 @@ Body:
 ### `DELETE /api/products/:id`
 
 Dipakai untuk fitur hapus product.
-
-Untuk sementara endpoint ini belum dibatasi role.
 
 ## Preorders
 
@@ -453,7 +449,8 @@ Rule komisi:
 - `draft`: belum masuk wallet agent.
 - `in_review`: belum masuk wallet agent.
 - `invalid`: tidak masuk wallet agent.
-- `approve`: `total_komisi` masuk ke wallet agent.
+- `approve`: belum masuk wallet agent; sales baru mengirim instruksi pembayaran ke customer.
+- `paid`: `total_komisi` masuk ke wallet agent setelah sales upload bukti pembayaran lunas.
 
 ## Sales
 
@@ -490,11 +487,11 @@ Invalid:
 
 Efek:
 
-- Jika `approve`, komisi PO masuk ke wallet agent.
 - Jika `approve`, backend mengirim pesan WhatsApp ke customer melalui Pancake:
   1. Instruksi pembayaran tahap pertama. Untuk `payment_mode=full`, tagihan 100%. Untuk `payment_mode=split`, tagihan DP 50%.
   2. File invoice/quotation PDF dari PO tersebut.
 - Jika `invalid`, komisi tidak masuk wallet agent.
+- Komisi belum masuk wallet saat status berubah ke `approve`. Komisi baru masuk setelah sales upload bukti pembayaran yang membuat `payment_status = "paid"`.
 
 ### `POST /api/sales/preorders/:id/payment-quotation`
 
@@ -546,9 +543,28 @@ stage: full, dp, atau remaining
 
 Efek:
 
-- `stage=full`: menyimpan `payment_proof`, status pembayaran menjadi `paid`.
+- `stage=full`: menyimpan `payment_proof`, status pembayaran menjadi `paid`, lalu `total_komisi` masuk ke wallet agent.
 - `stage=dp`: menyimpan `dp_proof`, status pembayaran menjadi `partial`.
-- `stage=remaining`: menyimpan `remaining_proof`, status pembayaran menjadi `paid`.
+- `stage=remaining`: menyimpan `remaining_proof`, status pembayaran menjadi `paid`, lalu `total_komisi` masuk ke wallet agent.
+
+Komisi hanya dicatat satu kali. Jika bukti lunas diupload ulang saat `payment_status` sudah `paid`, saldo wallet tidak bertambah lagi.
+
+Response:
+
+```json
+{
+  "message": "payment proof uploaded",
+  "payment": {
+    "payment_mode": "split",
+    "payment_status": "paid",
+    "stage": "remaining",
+    "payment_proof": "",
+    "dp_proof": "/uploads/payment_proofs/1781234567000.png",
+    "remaining_proof": "/uploads/payment_proofs/1781234567999.png",
+    "commission_credited": true
+  }
+}
+```
 
 Catatan pengiriman invoice WhatsApp:
 

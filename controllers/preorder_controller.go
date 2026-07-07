@@ -520,9 +520,6 @@ func (p PreorderController) UpdatePreorderStatus(c *gin.Context) {
 		}
 
 		if req.Status == models.PreorderStatusApprove {
-			if err := p.addPreorderCommissionToWallet(tx, preorder); err != nil {
-				return err
-			}
 			sendApprovalMessage = true
 		}
 		return nil
@@ -951,8 +948,24 @@ func (p PreorderController) UploadSalesPaymentProof(c *gin.Context) {
 	}
 
 	updates := paymentProofUpdates(stage, proofPath)
+	previousPaymentStatus := preorder.PaymentStatus
 	applyPaymentProofToPreorder(&preorder, stage, proofPath)
-	if err := p.db.Model(&preorder).Updates(updates).Error; err != nil {
+	shouldCreditCommission := previousPaymentStatus != models.PaymentStatusPaid && preorder.PaymentStatus == models.PaymentStatusPaid
+	commissionCredited := false
+
+	if err := p.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&preorder).Updates(updates).Error; err != nil {
+			return err
+		}
+		if shouldCreditCommission {
+			credited, err := p.addPreorderCommissionToWallet(tx, preorder)
+			if err != nil {
+				return err
+			}
+			commissionCredited = credited
+		}
+		return nil
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to upload payment proof", "error": err.Error()})
 		return
 	}
@@ -973,12 +986,13 @@ func (p PreorderController) UploadSalesPaymentProof(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "payment proof uploaded",
 		"payment": gin.H{
-			"payment_mode":    preorder.PaymentMode,
-			"payment_status":  preorder.PaymentStatus,
-			"stage":           stage,
-			"payment_proof":   preorder.PaymentProof,
-			"dp_proof":        preorder.DPProof,
-			"remaining_proof": preorder.RemainingProof,
+			"payment_mode":        preorder.PaymentMode,
+			"payment_status":      preorder.PaymentStatus,
+			"stage":               stage,
+			"payment_proof":       preorder.PaymentProof,
+			"dp_proof":            preorder.DPProof,
+			"remaining_proof":     preorder.RemainingProof,
+			"commission_credited": commissionCredited,
 		},
 	})
 }
@@ -1350,22 +1364,33 @@ func (p PreorderController) notifySales(tx *gorm.DB, preorder models.Preorder) e
 	return nil
 }
 
-func (p PreorderController) addPreorderCommissionToWallet(tx *gorm.DB, preorder models.Preorder) error {
-	var wallet models.AgentWallet
+func (p PreorderController) addPreorderCommissionToWallet(tx *gorm.DB, preorder models.Preorder) (bool, error) {
+	productName := fmt.Sprintf("Preorder %s", preorder.PONumber)
+
+	var existingCommission models.AgentCommission
 	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("user_id = ? AND product_name = ?", preorder.IDAgent, productName).
+		First(&existingCommission).Error
+	if err == nil {
+		return false, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, err
+	}
+
+	var wallet models.AgentWallet
+	err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where("user_id = ?", preorder.IDAgent).
 		First(&wallet).Error
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
+			return false, err
 		}
 		wallet = models.AgentWallet{UserID: preorder.IDAgent}
 		if err := tx.Create(&wallet).Error; err != nil {
-			return err
+			return false, err
 		}
 	}
-
-	productName := fmt.Sprintf("Preorder %s", preorder.PONumber)
 
 	commission := models.AgentCommission{
 		UserID:            preorder.IDAgent,
@@ -1377,13 +1402,17 @@ func (p PreorderController) addPreorderCommissionToWallet(tx *gorm.DB, preorder 
 		CommissionAmount:  preorder.TotalKomisi,
 	}
 	if err := tx.Create(&commission).Error; err != nil {
-		return err
+		return false, err
 	}
 
-	return tx.Model(&wallet).Updates(map[string]interface{}{
+	if err := tx.Model(&wallet).Updates(map[string]interface{}{
 		"total_commission":  wallet.TotalCommission + preorder.TotalKomisi,
 		"available_balance": wallet.AvailableBalance + preorder.TotalKomisi,
-	}).Error
+	}).Error; err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (p PreorderController) handlePreorderError(c *gin.Context, err error) {

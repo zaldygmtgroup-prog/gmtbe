@@ -80,6 +80,7 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 	}
 
 	products := r.Group("/api/products")
+	products.Use(middleware.AuthMiddleware(cfg, db))
 	{
 		products.GET("", productController.ListProducts)
 		products.GET("/:id", productController.GetProduct)

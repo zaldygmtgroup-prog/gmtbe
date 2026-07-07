@@ -1,6 +1,6 @@
 # BeGMT2 Auth API
 
-Backend auth dengan Go, Gin, GORM, MySQL, JWT, bcrypt, dan reset password via token WhatsApp lewat Pancake.
+Backend auth dengan Go, Gin, GORM, MySQL, JWT, bcrypt, dan reset password via token email.
 
 Dokumentasi endpoint lengkap ada di [API_ENDPOINTS.md](API_ENDPOINTS.md).
 
@@ -73,7 +73,6 @@ CORS_ALLOWED_ORIGINS=https://gmtgroup2.vercel.app,https://backstage-gmt-group.ve
 PANCAKE_PAGE_ID=waba_xxxxx
 PANCAKE_PAGE_ACCESS_TOKEN=page-access-token
 PANCAKE_WA_TEMPLATE_ID=optional-template-untuk-payment-instruction
-PANCAKE_RESET_PASSWORD_TEMPLATE_ID=approved-template-reset-password
 ```
 
 Jika backend dan MySQL berada dalam project Railway yang sama, aplikasi juga bisa membaca variable MySQL bawaan Railway:
@@ -180,7 +179,7 @@ Response berisi JWT token, session, dan data user seperti login biasa.
 }
 ```
 
-Jika email ada, sistem membuat token 6 digit, menyimpan hash token ke database, lalu mengirim token ke nomor WhatsApp user melalui Pancake. Untuk pengiriman di luar window 24 jam WhatsApp, isi `PANCAKE_RESET_PASSWORD_TEMPLATE_ID` dengan template reset password yang sudah approved.
+Jika email ada, sistem membuat token 6 digit, menyimpan hash token ke database, lalu mengirim token ke email user.
 
 ### Verifikasi Token
 
