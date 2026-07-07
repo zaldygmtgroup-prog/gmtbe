@@ -48,11 +48,21 @@ func (s MailService) SendPasswordResetToken(toEmail, toName, token string) error
 	}
 
 	if s.cfg.MailMailer == "sendgrid" {
-		return s.sendWithSendGrid(toEmail, toName, token)
+		if err := s.sendWithSendGrid(toEmail, toName, token); err != nil {
+			return s.fallbackToSMTP(toEmail, toName, token, err)
+		}
+		return nil
 	} else if s.cfg.MailMailer == "resend" {
-		return s.sendWithResend(toEmail, toName, token)
+		if err := s.sendWithResend(toEmail, toName, token); err != nil {
+			return s.fallbackToSMTP(toEmail, toName, token, err)
+		}
+		return nil
 	}
 
+	return s.sendWithSMTP(toEmail, toName, token)
+}
+
+func (s MailService) sendWithSMTP(toEmail, toName, token string) error {
 	message := gomail.NewMessage()
 	message.SetHeader("From", message.FormatAddress(s.cfg.MailUsername, s.cfg.MailFromName))
 	message.SetHeader("To", message.FormatAddress(toEmail, toName))
@@ -75,6 +85,23 @@ func (s MailService) SendPasswordResetToken(toEmail, toName, token string) error
 		dialer.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 	return dialer.DialAndSend(message)
+}
+
+func (s MailService) fallbackToSMTP(toEmail, toName, token string, primaryErr error) error {
+	if !s.hasSMTPConfig() {
+		return primaryErr
+	}
+	if err := s.sendWithSMTP(toEmail, toName, token); err != nil {
+		return fmt.Errorf("%v; smtp fallback failed: %w", primaryErr, err)
+	}
+	return nil
+}
+
+func (s MailService) hasSMTPConfig() bool {
+	return s.cfg.MailUsername != "" &&
+		s.cfg.MailUsername != "your-gmail@gmail.com" &&
+		s.cfg.MailPassword != "" &&
+		s.cfg.MailPassword != "your-gmail-app-password"
 }
 
 func (s MailService) sendWithSendGrid(toEmail, toName, token string) error {
