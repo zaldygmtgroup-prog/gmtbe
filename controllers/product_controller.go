@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -22,13 +23,14 @@ func NewProductController(cfg config.Config, db *gorm.DB) ProductController {
 }
 
 type productRequest struct {
-	NameProduct string  `json:"namaproduct" form:"namaproduct" binding:"required,max=150"`
-	Photo       string  `json:"foto"        form:"foto"        binding:"omitempty,max=255"`
-	Description string  `json:"deskripsi"   form:"deskripsi"`
-	Unit        string  `json:"unit"        form:"unit"        binding:"required,max=50"`
-	Price       int64   `json:"price"       form:"price"       binding:"required,min=1"`
-	Status      string  `json:"status"      form:"status"`
-	Komisi      float64 `json:"komisi"      form:"komisi"      binding:"omitempty,min=0"`
+	NameProduct     string             `json:"namaproduct" form:"namaproduct" binding:"required,max=150"`
+	Photo           string             `json:"foto"        form:"foto"        binding:"omitempty,max=255"`
+	Description     string             `json:"deskripsi"   form:"deskripsi"`
+	Unit            string             `json:"unit"        form:"unit"        binding:"required,max=50"`
+	Price           int64              `json:"price"       form:"price"       binding:"required,min=1"`
+	Status          string             `json:"status"      form:"status"`
+	Komisi          float64            `json:"komisi"      form:"komisi"      binding:"omitempty,min=0"`
+	CommissionTiers map[string]int64   `json:"commission_tiers" form:"commission_tiers"`
 }
 
 func (p ProductController) ListProducts(c *gin.Context) {
@@ -95,13 +97,14 @@ func (p ProductController) CreateProduct(c *gin.Context) {
 	}
 
 	product := models.Product{
-		NameProduct: req.NameProduct,
-		Photo:       req.Photo,
-		Description: req.Description,
-		Unit:        req.Unit,
-		Price:       req.Price,
-		Status:      req.Status,
-		Komisi:      req.Komisi,
+		NameProduct:     req.NameProduct,
+		Photo:           req.Photo,
+		Description:     req.Description,
+		Unit:            req.Unit,
+		Price:           req.Price,
+		Status:          req.Status,
+		Komisi:          req.Komisi,
+		CommissionTiers: models.JSONField[map[string]int64]{Val: req.CommissionTiers},
 	}
 
 	if err := p.db.Create(&product).Error; err != nil {
@@ -157,6 +160,7 @@ func (p ProductController) UpdateProduct(c *gin.Context) {
 	product.Price = req.Price
 	product.Status = req.Status
 	product.Komisi = req.Komisi
+	product.CommissionTiers = models.JSONField[map[string]int64]{Val: req.CommissionTiers}
 
 	// ✅ Update foto hanya jika: JSON request, atau multipart dengan foto baru diupload
 	if !multipart || photoUploaded {
@@ -215,6 +219,14 @@ func bindProductRequest(c *gin.Context, req *productRequest, multipart bool) err
 			return errors.New("komisi must be a valid number and at least 0")
 		}
 		req.Komisi = komisi
+	}
+
+	tiersStr := c.PostForm("commission_tiers")
+	if tiersStr != "" {
+		var tiers map[string]int64
+		if err := json.Unmarshal([]byte(tiersStr), &tiers); err == nil {
+			req.CommissionTiers = tiers
+		}
 	}
 
 	return nil

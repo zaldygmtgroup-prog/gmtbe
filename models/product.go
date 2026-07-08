@@ -14,11 +14,11 @@ type Product struct {
 	Unit            string           `gorm:"size:50;not null;column:unit"        json:"unit"`
 	Price           int64            `gorm:"not null;column:price"               json:"price"`
 	Status          string           `gorm:"size:50;column:status"               json:"status"`
-	Komisi          float64          `gorm:"column:komisi"                       json:"komisi"`
-	CommissionTiers map[string]int64 `gorm:"-"                                   json:"commission_tiers"`
-	CreatedAt       time.Time        `gorm:"column:created_at"                   json:"created_at"`
-	UpdatedAt       time.Time        `gorm:"column:updated_at"                   json:"updated_at"`
-	DeletedAt       gorm.DeletedAt   `gorm:"index;column:deleted_at"             json:"-"`
+	Komisi          float64                    `gorm:"column:komisi"                       json:"komisi"`
+	CommissionTiers JSONField[map[string]int64] `gorm:"type:json;column:commission_tiers"  json:"commission_tiers"`
+	CreatedAt       time.Time                  `gorm:"column:created_at"                   json:"created_at"`
+	UpdatedAt       time.Time                  `gorm:"column:updated_at"                   json:"updated_at"`
+	DeletedAt       gorm.DeletedAt             `gorm:"index;column:deleted_at"             json:"-"`
 }
 
 func (p Product) CalculateCommission(discountPercent float64) int64 {
@@ -40,13 +40,17 @@ func (p Product) CalculateCommission(discountPercent float64) int64 {
 }
 
 func (p *Product) PopulateCommissionTiers() {
-	p.CommissionTiers = map[string]int64{
-		"0%":  p.CalculateCommission(0),
-		"5%":  p.CalculateCommission(5),
-		"10%": p.CalculateCommission(10),
-		"15%": p.CalculateCommission(15),
-		"20%": p.CalculateCommission(20),
-		"25%": p.CalculateCommission(25),
-		"28%": p.CalculateCommission(28),
+	if p.CommissionTiers.Val == nil || len(p.CommissionTiers.Val) == 0 {
+		p.CommissionTiers = JSONField[map[string]int64]{
+			Val: map[string]int64{
+				"0%":  p.CalculateCommission(0),
+				"5%":  p.CalculateCommission(5),
+				"10%": p.CalculateCommission(10),
+				"15%": p.CalculateCommission(15),
+				"20%": p.CalculateCommission(20),
+				"25%": p.CalculateCommission(25),
+				"28%": p.CalculateCommission(28),
+			},
+		}
 	}
 }
