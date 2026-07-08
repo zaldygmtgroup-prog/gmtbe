@@ -67,6 +67,7 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 		auth.POST("/register/google", authController.RegisterWithGoogle)
 		auth.POST("/login", authController.Login)
 		auth.POST("/google", authController.LoginWithGoogle)
+		auth.POST("/refresh", authController.RefreshToken)
 		auth.POST("/forgot-password", authController.ForgotPassword)
 		auth.POST("/verify-reset-token", authController.VerifyResetToken)
 		auth.POST("/reset-password", authController.ResetPassword)

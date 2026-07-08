@@ -62,6 +62,11 @@ type loginRequest struct {
 	Client   string `json:"client" binding:"omitempty,max=100"`
 }
 
+type refreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+	Client       string `json:"client" binding:"omitempty,max=100"`
+}
+
 type googleAuthRequest struct {
 	IDToken string `json:"id_token" binding:"required"`
 	Client  string `json:"client" binding:"omitempty,max=100"`
@@ -258,13 +263,13 @@ func (a AuthController) Login(c *gin.Context) {
 		return
 	}
 
-	token, session, err := a.issueToken(user, req.Client)
+	token, refreshToken, session, err := a.issueToken(user, req.Client)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to generate token"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "login successful", "token": token, "session": session, "user": user})
+	c.JSON(http.StatusOK, gin.H{"message": "login successful", "token": token, "refresh_token": refreshToken, "session": session, "user": user})
 }
 
 func (a AuthController) LoginWithGoogle(c *gin.Context) {
@@ -320,13 +325,13 @@ func (a AuthController) LoginWithGoogle(c *gin.Context) {
 		return
 	}
 
-	token, session, err := a.issueToken(user, req.Client)
+	token, refreshToken, session, err := a.issueToken(user, req.Client)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to generate token"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "google login successful", "token": token, "session": session, "user": user})
+	c.JSON(http.StatusOK, gin.H{"message": "google login successful", "token": token, "refresh_token": refreshToken, "session": session, "user": user})
 }
 
 func (a AuthController) RegisterWithGoogle(c *gin.Context) {
@@ -377,13 +382,13 @@ func (a AuthController) RegisterWithGoogle(c *gin.Context) {
 		return
 	}
 
-	token, session, err := a.issueToken(user, req.Client)
+	token, refreshToken, session, err := a.issueToken(user, req.Client)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to generate token"})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "google registration successful", "token": token, "session": session, "user": user})
+	c.JSON(http.StatusCreated, gin.H{"message": "google registration successful", "token": token, "refresh_token": refreshToken, "session": session, "user": user})
 }
 
 func (a AuthController) ForgotPassword(c *gin.Context) {
@@ -529,6 +534,77 @@ func (a AuthController) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "logout successful"})
 }
 
+func (a AuthController) RefreshToken(c *gin.Context) {
+	var req refreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request", "error": err.Error()})
+		return
+	}
+
+	refreshHash := utils.HashToken(req.RefreshToken)
+	now := time.Now()
+
+	var user models.User
+	var session models.AuthSession
+	var accessToken string
+	var nextRefreshToken string
+
+	err := a.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where(
+			"refresh_token_hash = ? AND revoked_at IS NULL AND expires_at > ?",
+			refreshHash,
+			now,
+		).First(&session).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Preload("DetailUser").First(&user, session.UserID).Error; err != nil {
+			return err
+		}
+
+		var err error
+		nextRefreshToken, err = utils.GenerateOpaqueToken(48)
+		if err != nil {
+			return err
+		}
+		nextRefreshHash := utils.HashToken(nextRefreshToken)
+		refreshExpiresAt := now.Add(a.refreshTokenDuration())
+
+		updates := map[string]interface{}{
+			"refresh_token_hash": nextRefreshHash,
+			"expires_at":         refreshExpiresAt,
+		}
+		if strings.TrimSpace(req.Client) != "" {
+			updates["client"] = req.Client
+			session.Client = req.Client
+		}
+		if err := tx.Model(&session).Updates(updates).Error; err != nil {
+			return err
+		}
+		session.RefreshTokenHash = &nextRefreshHash
+		session.ExpiresAt = refreshExpiresAt
+
+		accessToken, err = a.generateAccessToken(user, session.SessionID)
+		return err
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "invalid or expired refresh token"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to refresh token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "token refreshed",
+		"token":         accessToken,
+		"refresh_token": nextRefreshToken,
+		"session":       session,
+		"user":          user,
+	})
+}
+
 func (a AuthController) CreateSSOCode(c *gin.Context) {
 	var req createSSOCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -583,6 +659,7 @@ func (a AuthController) ExchangeSSOCode(c *gin.Context) {
 	var user models.User
 	var session models.AuthSession
 	var token string
+	var refreshToken string
 	now := time.Now()
 
 	err := a.db.Transaction(func(tx *gorm.DB) error {
@@ -610,12 +687,17 @@ func (a AuthController) ExchangeSSOCode(c *gin.Context) {
 		}
 
 		var sessionErr error
-		session, sessionErr = a.createSession(tx, user.ID, req.TargetClient)
+		refreshToken, sessionErr = utils.GenerateOpaqueToken(48)
 		if sessionErr != nil {
 			return sessionErr
 		}
 
-		token, sessionErr = utils.GenerateJWT(user.ID, user.Email, string(user.Role), session.SessionID, a.cfg.JWTSecret, a.cfg.JWTExpiresHours)
+		session, sessionErr = a.createSession(tx, user.ID, req.TargetClient, utils.HashToken(refreshToken))
+		if sessionErr != nil {
+			return sessionErr
+		}
+
+		token, sessionErr = a.generateAccessToken(user, session.SessionID)
 		return sessionErr
 	})
 	if err != nil {
@@ -632,10 +714,11 @@ func (a AuthController) ExchangeSSOCode(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "sso exchange successful",
-		"token":   token,
-		"session": session,
-		"user":    user,
+		"message":       "sso exchange successful",
+		"token":         token,
+		"refresh_token": refreshToken,
+		"session":       session,
+		"user":          user,
 	})
 }
 
@@ -877,37 +960,58 @@ func (a AuthController) UpdateAgentApplicationStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "agent application status updated", "user": user})
 }
 
-func (a AuthController) issueToken(user models.User, client string) (string, models.AuthSession, error) {
-	session, err := a.createSession(a.db, user.ID, client)
+func (a AuthController) issueToken(user models.User, client string) (string, string, models.AuthSession, error) {
+	refreshToken, err := utils.GenerateOpaqueToken(48)
 	if err != nil {
-		return "", models.AuthSession{}, err
+		return "", "", models.AuthSession{}, err
 	}
 
-	token, err := utils.GenerateJWT(user.ID, user.Email, string(user.Role), session.SessionID, a.cfg.JWTSecret, a.cfg.JWTExpiresHours)
+	session, err := a.createSession(a.db, user.ID, client, utils.HashToken(refreshToken))
 	if err != nil {
-		return "", models.AuthSession{}, err
+		return "", "", models.AuthSession{}, err
 	}
 
-	return token, session, nil
+	token, err := a.generateAccessToken(user, session.SessionID)
+	if err != nil {
+		return "", "", models.AuthSession{}, err
+	}
+
+	return token, refreshToken, session, nil
 }
 
-func (a AuthController) createSession(tx *gorm.DB, userID uint, client string) (models.AuthSession, error) {
+func (a AuthController) createSession(tx *gorm.DB, userID uint, client, refreshTokenHash string) (models.AuthSession, error) {
 	sessionID, err := utils.GenerateOpaqueToken(32)
 	if err != nil {
 		return models.AuthSession{}, err
 	}
 
 	session := models.AuthSession{
-		SessionID: sessionID,
-		UserID:    userID,
-		Client:    client,
-		ExpiresAt: time.Now().Add(time.Duration(a.cfg.JWTExpiresHours) * time.Hour),
+		SessionID:        sessionID,
+		UserID:           userID,
+		Client:           client,
+		RefreshTokenHash: &refreshTokenHash,
+		ExpiresAt:        time.Now().Add(a.refreshTokenDuration()),
 	}
 	if err := tx.Create(&session).Error; err != nil {
 		return models.AuthSession{}, err
 	}
 
 	return session, nil
+}
+
+func (a AuthController) generateAccessToken(user models.User, sessionID string) (string, error) {
+	expiresIn := time.Duration(a.cfg.JWTAccessExpiresMinutes) * time.Minute
+	return utils.GenerateJWTWithDuration(user.ID, user.Email, string(user.Role), sessionID, a.cfg.JWTSecret, expiresIn)
+}
+
+func (a AuthController) refreshTokenDuration() time.Duration {
+	if a.cfg.RefreshTokenExpiresHours > 0 {
+		return time.Duration(a.cfg.RefreshTokenExpiresHours) * time.Hour
+	}
+	if a.cfg.JWTExpiresHours > 0 {
+		return time.Duration(a.cfg.JWTExpiresHours) * time.Hour
+	}
+	return 7 * 24 * time.Hour
 }
 
 func createGoogleUser(profile googleTokenInfo) (models.User, error) {

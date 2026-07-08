@@ -21,13 +21,21 @@ type JWTClaims struct {
 }
 
 func GenerateJWT(userID uint, email, role, sessionID, secret string, expiresHours int) (string, error) {
+	return GenerateJWTWithDuration(userID, email, role, sessionID, secret, time.Duration(expiresHours)*time.Hour)
+}
+
+func GenerateJWTWithDuration(userID uint, email, role, sessionID, secret string, expiresIn time.Duration) (string, error) {
+	if expiresIn <= 0 {
+		expiresIn = 15 * time.Minute
+	}
+
 	claims := JWTClaims{
 		UserID:    userID,
 		Email:     email,
 		Role:      role,
 		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expiresHours) * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiresIn)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}

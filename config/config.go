@@ -20,6 +20,8 @@ type Config struct {
 	DBName                   string
 	JWTSecret                string
 	JWTExpiresHours          int
+	JWTAccessExpiresMinutes  int
+	RefreshTokenExpiresHours int
 	MailHost                 string
 	MailPort                 int
 	MailUsername             string
@@ -67,6 +69,8 @@ func Load() Config {
 		DBName:                   getEnv("DB_NAME", getEnv("MYSQLDATABASE", getEnv("MYSQL_DATABASE", "begmt2"))),
 		JWTSecret:                getEnv("JWT_SECRET", "change-this-secret"),
 		JWTExpiresHours:          getEnvAsInt("JWT_EXPIRES_HOURS", 24),
+		JWTAccessExpiresMinutes:  getEnvAsInt("JWT_ACCESS_EXPIRES_MINUTES", 15),
+		RefreshTokenExpiresHours: getEnvAsInt("REFRESH_TOKEN_EXPIRES_HOURS", 24*7),
 		MailHost:                 getEnv("MAIL_HOST", "smtp.gmail.com"),
 		MailPort:                 getEnvAsInt("MAIL_PORT", 587),
 		MailUsername:             getEnv("MAIL_USERNAME", ""),
