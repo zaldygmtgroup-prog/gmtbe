@@ -19,6 +19,8 @@ type PancakeService struct {
 	cfg config.Config
 }
 
+const paymentBankAccount = "BCA 6640755855 CV Santri Putra Abuzed"
+
 func NewPancakeService(cfg config.Config) *PancakeService {
 	return &PancakeService{cfg: cfg}
 }
@@ -114,7 +116,7 @@ func (s *PancakeService) SendPaymentInstructions(po models.Preorder, stage model
 			templateParams["HEADER_PARAMS"] = map[string]interface{}{
 				"DOCUMENT": map[string]string{
 					"url":  pdfURL,
-					"name": fmt.Sprintf("%s.pdf", safePONumber),
+					"name": fmt.Sprintf("invoice_%s.pdf", safePONumber),
 				},
 			}
 		}
@@ -122,8 +124,12 @@ func (s *PancakeService) SendPaymentInstructions(po models.Preorder, stage model
 		return s.SendTemplateMessage(phone, s.cfg.PancakeWATemplateID, templateParams)
 	}
 
-	message := fmt.Sprintf("Halo %s,\n\nPreorder Anda dengan nomor %s telah disetujui. Tagihan %s yang harus dibayar: %s.\nSilakan balas pesan ini untuk mendapatkan informasi rekening dan cara pembayaran.\n\nTerima kasih.", po.NamaCustomer, po.PONumber, stageLabel, formattedAmount)
+	message := buildPaymentInstructionMessage(po, stageLabel, formattedAmount)
 	return s.SendTextMessage(phone, message)
+}
+
+func buildPaymentInstructionMessage(po models.Preorder, stageLabel, formattedAmount string) string {
+	return fmt.Sprintf("Halo %s,\n\nPreorder Anda dengan nomor %s telah disetujui. Tagihan %s yang harus dibayar: %s.\n\nRekening pembayaran:\n%s\n\nTata cara pembayaran:\n1. Transfer sesuai nominal tagihan ke rekening BCA di atas.\n2. Cantumkan nomor PO pada berita/keterangan transfer jika tersedia.\n3. Kirim bukti transfer melalui WhatsApp ini agar pembayaran dapat diverifikasi.\n\nTerima kasih.", po.NamaCustomer, po.PONumber, stageLabel, formattedAmount, paymentBankAccount)
 }
 
 func paymentStageLabel(stage models.PaymentStage) string {

@@ -783,7 +783,7 @@ func (p PreorderController) GetPreorderPDF(c *gin.Context) {
 	pdf := buildPreorderPDF(preorder)
 
 	c.Header("Content-Type", "application/pdf")
-	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=%s.pdf", sanitizeIdentifier(preorder.PONumber)))
+	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=%s", preorderInvoiceFilename(preorder)))
 	err := pdf.Output(c.Writer)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to generate PDF", "error": err.Error()})
@@ -797,8 +797,12 @@ func buildPreorderPDFBytes(preorder models.Preorder) ([]byte, string, error) {
 		return nil, "", err
 	}
 
-	filename := fmt.Sprintf("%s.pdf", sanitizeIdentifier(preorder.PONumber))
+	filename := preorderInvoiceFilename(preorder)
 	return buffer.Bytes(), filename, nil
+}
+
+func preorderInvoiceFilename(preorder models.Preorder) string {
+	return fmt.Sprintf("invoice_%s.pdf", sanitizeIdentifier(preorder.PONumber))
 }
 
 func buildPreorderPDF(preorder models.Preorder) *gofpdf.Fpdf {
@@ -813,7 +817,7 @@ func buildPreorderPDF(preorder models.Preorder) *gofpdf.Fpdf {
 
 	pdf.SetFont("Arial", "B", 11)
 	pdf.SetTextColor(0, 0, 0)
-	pdf.Cell(0, 8, "QUOTATION")
+	pdf.Cell(0, 8, "INVOICE")
 	pdf.Ln(9)
 
 	agentName := "-"
@@ -848,6 +852,8 @@ func buildPreorderPDF(preorder models.Preorder) *gofpdf.Fpdf {
 
 	pdf.Ln(5)
 	drawPreorderTotals(pdf, preorder)
+	pdf.Ln(5)
+	drawPreorderPaymentInstructions(pdf)
 	return pdf
 }
 
@@ -1109,6 +1115,41 @@ func drawPreorderTotals(pdf *gofpdf.Fpdf, preorder models.Preorder) {
 	pdf.SetX(labelX)
 	pdf.CellFormat(labelW, 5, "Total", "", 0, "L", false, 0, "")
 	pdf.CellFormat(valueW, 5, formatRupiah(preorder.Total), "B", 1, "R", false, 0, "")
+}
+
+func drawPreorderPaymentInstructions(pdf *gofpdf.Fpdf) {
+	ensurePDFSpace(pdf, 36, nil)
+
+	lines := []string{
+		"Rekening pembayaran: BCA 6640755855 CV Santri Putra Abuzed",
+		"Tata cara pembayaran:",
+		"1. Transfer sesuai nominal tagihan ke rekening BCA di atas.",
+		"2. Cantumkan nomor PO pada berita/keterangan transfer jika tersedia.",
+		"3. Kirim bukti transfer melalui WhatsApp ini agar pembayaran dapat diverifikasi.",
+	}
+
+	pageW, _ := pdf.GetPageSize()
+	left, _, right, _ := pdf.GetMargins()
+	usableW := pageW - left - right
+	x := pdf.GetX()
+	y := pdf.GetY()
+	rowH := 31.0
+
+	pdf.SetDrawColor(180, 180, 180)
+	pdf.Rect(x, y, usableW, rowH, "D")
+	pdf.SetFillColor(110, 170, 70)
+	pdf.Rect(x, y, usableW, 6, "F")
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Arial", "B", 7)
+	pdf.SetXY(x+2, y+1.2)
+	pdf.Cell(0, 3.5, "Payment Instructions")
+
+	pdf.SetFont("Arial", "", 7)
+	pdf.SetXY(x+2, y+8)
+	for _, line := range lines {
+		pdf.MultiCell(usableW-4, 4.2, line, "", "L", false)
+	}
+	pdf.SetXY(x, y+rowH+2)
 }
 
 func calculatePDFRowHeight(pdf *gofpdf.Fpdf, widths []float64, cells []string, lineH float64, minH float64) float64 {

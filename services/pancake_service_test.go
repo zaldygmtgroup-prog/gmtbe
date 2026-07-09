@@ -1,6 +1,11 @@
 package services
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"begmt2/models"
+)
 
 func TestNormalizePancakePhone(t *testing.T) {
 	tests := []struct {
@@ -20,5 +25,25 @@ func TestNormalizePancakePhone(t *testing.T) {
 				t.Fatalf("normalizePancakePhone(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestBuildPaymentInstructionMessageIncludesBankAndSteps(t *testing.T) {
+	message := buildPaymentInstructionMessage(models.Preorder{
+		NamaCustomer: "Budi",
+		PONumber:     "PO-001",
+	}, "DP 50%", "Rp 1.000.000")
+
+	expectedParts := []string{
+		"BCA 6640755855 CV Santri Putra Abuzed",
+		"Tata cara pembayaran:",
+		"1. Transfer sesuai nominal tagihan ke rekening BCA di atas.",
+		"2. Cantumkan nomor PO pada berita/keterangan transfer jika tersedia.",
+		"3. Kirim bukti transfer melalui WhatsApp ini agar pembayaran dapat diverifikasi.",
+	}
+	for _, part := range expectedParts {
+		if !strings.Contains(message, part) {
+			t.Fatalf("expected message to contain %q, got %q", part, message)
+		}
 	}
 }
