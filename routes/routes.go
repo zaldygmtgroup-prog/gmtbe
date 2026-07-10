@@ -35,6 +35,7 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 	marketingController := controllers.NewMarketingController(cfg, db)
 	educationController := controllers.NewEducationController(cfg, db)
 	knowledgeBaseController := controllers.NewKnowledgeBaseController(cfg, db)
+	articleController := controllers.NewArticleController(cfg, db)
 
 	r.GET("/health", func(c *gin.Context) {
 		sqlDB, err := db.DB()
@@ -176,6 +177,19 @@ func SetupRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 		marketing.GET("/content-brief-cache", marketingController.GetCache)
 		marketing.POST("/content-brief-cache", middleware.AuthMiddleware(cfg, db), middleware.RoleMiddleware("marketing", "super_admin"), marketingController.SaveCache)
 		marketing.DELETE("/content-brief-cache", middleware.AuthMiddleware(cfg, db), middleware.RoleMiddleware("marketing", "super_admin"), marketingController.DeleteCache)
+	}
+
+	articles := r.Group("/api/articles")
+	{
+		// Public
+		articles.GET("", articleController.ListArticles)
+		articles.GET("/:id", articleController.GetArticle)
+
+		// Protected CMS (super_admin, marketing)
+		articles.POST("", middleware.AuthMiddleware(cfg, db), middleware.RoleMiddleware("super_admin", "marketing"), articleController.CreateArticle)
+		articles.PUT("/:id", middleware.AuthMiddleware(cfg, db), middleware.RoleMiddleware("super_admin", "marketing"), articleController.UpdateArticle)
+		articles.DELETE("/:id", middleware.AuthMiddleware(cfg, db), middleware.RoleMiddleware("super_admin", "marketing"), articleController.DeleteArticle)
+		articles.POST("/import", middleware.AuthMiddleware(cfg, db), middleware.RoleMiddleware("super_admin", "marketing"), articleController.ImportArticles)
 	}
 
 	return r

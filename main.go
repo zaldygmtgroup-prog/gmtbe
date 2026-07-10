@@ -35,6 +35,7 @@ func main() {
 		&models.Education{},
 		&models.EducationRegistration{},
 		&models.ModelKnowledgeBase{},
+		&models.Article{},
 	); err != nil {
 		log.Fatalf("failed to migrate database: %v", err)
 	}

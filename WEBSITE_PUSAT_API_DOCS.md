@@ -957,6 +957,237 @@ Rule:
 DELETE /api/agent/onboarding/progress
 ```
 
+## Articles (CMS)
+
+Endpoint artikel untuk CMS dan scraping import. GET bersifat public, endpoint lain wajib login sebagai `super_admin` atau `marketing`.
+
+Status artikel:
+
+```text
+draft
+published
+archived
+```
+
+### List Artikel
+
+```text
+GET /api/articles
+GET /api/articles?search=lampu&status=draft&page=1&limit=20
+```
+
+Query opsional:
+
+| Parameter | Deskripsi                          | Default |
+| --------- | ---------------------------------- | ------- |
+| `search`  | Cari berdasarkan title atau excerpt | -       |
+| `status`  | Filter berdasarkan status          | -       |
+| `page`    | Halaman                           | 1       |
+| `limit`   | Jumlah per halaman                 | 20      |
+
+Response:
+
+```json
+{
+  "articles": [
+    {
+      "id": 1,
+      "title": "Judul artikel",
+      "slug": "judul-artikel",
+      "excerpt": "Ringkasan artikel",
+      "content": "<h1>Konten HTML</h1>",
+      "featured_image": "https://url-gambar.com/image.jpg",
+      "author": "Global Multipro Technology",
+      "source_url": "https://website-lama.com/artikel/contoh",
+      "status": "draft",
+      "seo": {
+        "title": "SEO title",
+        "description": "SEO description",
+        "canonical_url": "https://website-lama.com/artikel/contoh"
+      },
+      "published_at": "2026-06-08T03:36:40Z",
+      "created_at": "2026-06-10T00:17:09Z",
+      "updated_at": "2026-06-10T00:17:09Z"
+    }
+  ],
+  "meta": {
+    "total": 50,
+    "page": 1,
+    "limit": 20,
+    "total_pages": 3
+  }
+}
+```
+
+### Detail Artikel
+
+```text
+GET /api/articles/:id
+```
+
+Parameter `:id` bisa berupa ID numerik atau slug artikel.
+
+Response:
+
+```json
+{
+  "article": {
+    "id": 1,
+    "title": "Judul artikel",
+    "slug": "judul-artikel",
+    "excerpt": "Ringkasan artikel",
+    "content": "<h1>Konten HTML lengkap</h1>",
+    "featured_image": "https://url-gambar.com/image.jpg",
+    "author": "Global Multipro Technology",
+    "source_url": "https://website-lama.com/artikel/contoh",
+    "status": "draft",
+    "seo": {
+      "title": "SEO title",
+      "description": "SEO description",
+      "canonical_url": "https://website-lama.com/artikel/contoh"
+    },
+    "published_at": "2026-06-08T03:36:40Z",
+    "created_at": "2026-06-10T00:17:09Z",
+    "updated_at": "2026-06-10T00:17:09Z"
+  }
+}
+```
+
+### Create Artikel
+
+```text
+POST /api/articles
+```
+
+Auth: wajib login sebagai `super_admin` atau `marketing`.
+
+Body:
+
+```json
+{
+  "title": "Judul artikel",
+  "slug": "judul-artikel",
+  "excerpt": "Ringkasan/meta description artikel",
+  "content": "<h1>Konten artikel HTML...</h1>",
+  "featured_image": "https://url-gambar.com/image.jpg",
+  "author": "Global Multipro Technology",
+  "source_url": "https://website-lama.com/artikel/contoh",
+  "status": "draft",
+  "published_at": "2026-06-08T03:36:40.000Z",
+  "updated_at": "2026-06-10T00:17:09.000Z",
+  "seo": {
+    "title": "SEO title",
+    "description": "SEO description",
+    "canonical_url": "https://website-lama.com/artikel/contoh"
+  }
+}
+```
+
+Response sukses (201):
+
+```json
+{
+  "message": "Article created",
+  "article": {
+    "id": 1,
+    "title": "Judul artikel",
+    "slug": "judul-artikel",
+    "status": "draft"
+  }
+}
+```
+
+Jika slug sudah ada, response 409:
+
+```json
+{
+  "message": "slug already exists"
+}
+```
+
+### Update Artikel
+
+```text
+PUT /api/articles/:id
+```
+
+Auth: wajib login sebagai `super_admin` atau `marketing`.
+
+Body sama seperti create.
+
+### Delete Artikel
+
+```text
+DELETE /api/articles/:id
+```
+
+Auth: wajib login sebagai `super_admin` atau `marketing`.
+
+Response:
+
+```json
+{
+  "message": "Article deleted"
+}
+```
+
+### Bulk Import Artikel
+
+```text
+POST /api/articles/import
+```
+
+Auth: wajib login sebagai `super_admin` atau `marketing`.
+
+Cocok untuk import banyak artikel sekaligus dari scraper.
+
+Body:
+
+```json
+{
+  "articles": [
+    {
+      "title": "Judul artikel 1",
+      "slug": "judul-artikel-1",
+      "excerpt": "Ringkasan",
+      "content": "<h1>Konten HTML</h1>",
+      "featured_image": "https://...",
+      "author": "Global Multipro Technology",
+      "source_url": "https://...",
+      "status": "draft",
+      "published_at": "2026-06-08T03:36:40.000Z",
+      "updated_at": "2026-06-10T00:17:09.000Z",
+      "seo": {
+        "title": "SEO title",
+        "description": "SEO description",
+        "canonical_url": "https://..."
+      }
+    }
+  ]
+}
+```
+
+Response (201):
+
+```json
+{
+  "message": "Import completed",
+  "created_count": 5,
+  "skipped_count": 2,
+  "created": [
+    {
+      "id": 1,
+      "title": "Judul artikel 1",
+      "slug": "judul-artikel-1",
+      "status": "draft"
+    }
+  ],
+  "skipped_slugs": ["judul-sudah-ada", "judul-duplikat"]
+}
+```
+
+Catatan: Artikel dengan slug yang sudah ada di database akan di-skip, bukan error.
+
 ## Health Check
 
 ```text
