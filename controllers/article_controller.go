@@ -32,16 +32,18 @@ func NewArticleController(cfg config.Config, db *gorm.DB) *ArticleController {
 
 type articleRequest struct {
 	Title         string              `json:"title"          binding:"required,max=500"`
-	Slug          string              `json:"slug"           binding:"required,max=500"`
-	Excerpt       string              `json:"excerpt"`
-	Content       string              `json:"content"`
-	FeaturedImage string              `json:"featured_image" binding:"omitempty,max=500"`
-	Author        string              `json:"author"         binding:"omitempty,max=255"`
-	SourceURL     string              `json:"source_url"     binding:"omitempty,max=500"`
-	Status        string              `json:"status"         binding:"omitempty,oneof=draft published archived"`
-	SEO           *models.ArticleSEO  `json:"seo"`
-	PublishedAt   *time.Time          `json:"published_at"`
-	UpdatedAt     *time.Time          `json:"updated_at"`
+	Slug          string                  `json:"slug"           binding:"required,max=500"`
+	Category      string                  `json:"category"       binding:"omitempty,max=255"`
+	Excerpt       string                  `json:"excerpt"`
+	Content       string                  `json:"content"`
+	FeaturedImage string                  `json:"featured_image" binding:"omitempty,max=500"`
+	Author        string                  `json:"author"         binding:"omitempty,max=255"`
+	SourceURL     string                  `json:"source_url"     binding:"omitempty,max=500"`
+	Status        string                  `json:"status"         binding:"omitempty,oneof=draft published archived"`
+	SEO           *models.ArticleSEO      `json:"seo"`
+	Metadata      *models.ArticleMetadata `json:"metadata"`
+	PublishedAt   *time.Time              `json:"published_at"`
+	UpdatedAt     *time.Time              `json:"updated_at"`
 }
 
 type articleSummary struct {
@@ -71,6 +73,7 @@ func parseArticleID(c *gin.Context) (uint, bool) {
 func applyArticleRequest(a *models.Article, req *articleRequest) {
 	a.Title = req.Title
 	a.Slug = req.Slug
+	a.Category = req.Category
 	a.Excerpt = req.Excerpt
 	a.Content = req.Content
 	a.FeaturedImage = req.FeaturedImage
@@ -85,6 +88,10 @@ func applyArticleRequest(a *models.Article, req *articleRequest) {
 
 	if req.SEO != nil {
 		a.SEO = models.JSONField[models.ArticleSEO]{Val: *req.SEO}
+	}
+
+	if req.Metadata != nil {
+		a.Metadata = models.JSONField[models.ArticleMetadata]{Val: *req.Metadata}
 	}
 
 	if req.PublishedAt != nil {

@@ -1065,22 +1065,28 @@ Body:
 
 ```json
 {
-  "title": "Judul artikel",
-  "slug": "judul-artikel",
-  "excerpt": "Ringkasan/meta description artikel",
-  "content": "<h1>Konten artikel HTML...</h1>",
-  "featured_image": "https://url-gambar.com/image.jpg",
-  "author": "Global Multipro Technology",
-  "source_url": "https://website-lama.com/artikel/contoh",
-  "status": "draft",
-  "published_at": "2026-06-08T03:36:40.000Z",
-  "updated_at": "2026-06-10T00:17:09.000Z",
-  "seo": {
-    "title": "SEO title",
-    "description": "SEO description",
-    "canonical_url": "https://website-lama.com/artikel/contoh"
+    "title": "Judul artikel",
+    "slug": "judul-artikel",
+    "category": "Media",
+    "excerpt": "Ringkasan artikel",
+    "content": "<h1>Konten artikel HTML...</h1>",
+    "featured_image": "https://url-gambar.com/image.jpg",
+    "author": "Global Multipro Technology",
+    "source_url": "https://website-lama.com/artikel/contoh",
+    "status": "draft",
+    "published_at": "2026-06-08T03:36:40.000Z",
+    "updated_at": "2026-06-10T00:17:09.000Z",
+    "seo": {
+      "title": "SEO title",
+      "description": "SEO description",
+      "canonical_url": "https://website-lama.com/artikel/contoh"
+    },
+    "metadata": {
+      "gallery": ["https://url.com/img1.jpg", "https://url.com/img2.jpg"],
+      "related_products": [1, 2, 5],
+      "related_articles": [10, 12]
+    }
   }
-}
 ```
 
 Response sukses (201):
