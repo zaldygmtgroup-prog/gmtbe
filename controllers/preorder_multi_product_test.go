@@ -75,11 +75,12 @@ func TestPreorderMultiProductAndWithdraw(t *testing.T) {
 		r.POST("/api/preorders", preorderCtrl.CreatePreorder)
 
 		body := map[string]interface{}{
-			"nama_customer": "Customer Multi",
-			"email":         "customer@multi.com",
-			"alamat":        "Jl. Multi No. 1",
-			"no_hp":         "0811223344",
-			"catatan":       "Test multi-product PO",
+			"nama_customer":   "Customer Multi",
+			"nama_perusahaan": "PT Multi Customer",
+			"email":           "customer@multi.com",
+			"alamat":          "Jl. Multi No. 1",
+			"no_hp":           "0811223344",
+			"catatan":         "Test multi-product PO",
 			"items": []map[string]interface{}{
 				{
 					"id_product":       p1.IDProduct,
@@ -150,11 +151,12 @@ func TestPreorderMultiProductAndWithdraw(t *testing.T) {
 
 		for _, tc := range testCases {
 			body := map[string]interface{}{
-				"nama_customer": "Test Customer",
-				"email":         "cust@test.com",
-				"alamat":        "Jl. Test No. 1",
-				"no_hp":         "0811223344",
-				"payment_mode":  tc.inputMode,
+				"nama_customer":   "Test Customer",
+				"nama_perusahaan": "PT Test Customer",
+				"email":           "cust@test.com",
+				"alamat":          "Jl. Test No. 1",
+				"no_hp":           "0811223344",
+				"payment_mode":    tc.inputMode,
 				"items": []map[string]interface{}{
 					{
 						"id_product":       p1.IDProduct,

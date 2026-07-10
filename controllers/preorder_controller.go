@@ -51,13 +51,14 @@ type preorderItemReq struct {
 }
 
 type createPreorderReq struct {
-	NamaCustomer string             `json:"nama_customer" binding:"required,max=255"`
-	Email        string             `json:"email" binding:"required,email"`
-	Alamat       string             `json:"alamat" binding:"required"`
-	NoHP         string             `json:"no_hp" binding:"required,max=50"`
-	Catatan      string             `json:"catatan"`
-	PaymentMode  models.PaymentMode `json:"payment_mode"`
-	Items        []preorderItemReq  `json:"items" binding:"required,min=1"`
+	NamaCustomer   string             `json:"nama_customer" binding:"required,max=255"`
+	NamaPerusahaan string             `json:"nama_perusahaan" binding:"max=255"`
+	Email          string             `json:"email" binding:"required,email"`
+	Alamat         string             `json:"alamat" binding:"required"`
+	NoHP           string             `json:"no_hp" binding:"required,max=50"`
+	Catatan        string             `json:"catatan"`
+	PaymentMode    models.PaymentMode `json:"payment_mode"`
+	Items          []preorderItemReq  `json:"items" binding:"required,min=1"`
 }
 
 type updatePreorderStatusRequest struct {
@@ -84,14 +85,15 @@ func (p PreorderController) CreatePreorder(c *gin.Context) {
 	agentID := c.GetUint("user_id")
 
 	preorder := models.Preorder{
-		IDAgent:      agentID,
-		NamaCustomer: req.NamaCustomer,
-		Email:        req.Email,
-		Alamat:       req.Alamat,
-		NoHP:         req.NoHP,
-		Catatan:      req.Catatan,
-		Status:       models.PreorderStatusDraft,
-		PaymentMode:  paymentMode,
+		IDAgent:        agentID,
+		NamaCustomer:   req.NamaCustomer,
+		NamaPerusahaan: req.NamaPerusahaan,
+		Email:          req.Email,
+		Alamat:         req.Alamat,
+		NoHP:           req.NoHP,
+		Catatan:        req.Catatan,
+		Status:         models.PreorderStatusDraft,
+		PaymentMode:    paymentMode,
 	}
 
 	var items []models.PreorderItem
@@ -171,15 +173,17 @@ func (p PreorderController) CreatePreorder(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Preorder created",
 		"preorder": gin.H{
-			"id":             preorder.ID,
-			"po_number":      preorder.PONumber,
-			"status":         preorder.Status,
-			"payment_mode":   preorder.PaymentMode,
-			"payment_status": preorder.PaymentStatus,
-			"subtotal":       preorder.Subtotal,
-			"total_discount": preorder.TotalDiscount,
-			"total":          preorder.Total,
-			"total_komisi":   preorder.TotalKomisi,
+			"id":              preorder.ID,
+			"po_number":       preorder.PONumber,
+			"nama_customer":   preorder.NamaCustomer,
+			"nama_perusahaan": preorder.NamaPerusahaan,
+			"status":          preorder.Status,
+			"payment_mode":    preorder.PaymentMode,
+			"payment_status":  preorder.PaymentStatus,
+			"subtotal":        preorder.Subtotal,
+			"total_discount":  preorder.TotalDiscount,
+			"total":           preorder.Total,
+			"total_komisi":    preorder.TotalKomisi,
 		},
 	})
 }
@@ -195,7 +199,7 @@ func (p PreorderController) ListPreorders(c *gin.Context) {
 	if search != "" {
 		like := "%" + search + "%"
 		query = query.Joins("LEFT JOIN preorder_items ON preorder_items.id_preorder = preorders.id").
-			Where("preorders.nama_customer LIKE ? OR preorders.email LIKE ? OR preorders.no_hp LIKE ? OR preorder_items.product_name_snapshot LIKE ?", like, like, like, like).
+			Where("preorders.nama_customer LIKE ? OR preorders.nama_perusahaan LIKE ? OR preorders.email LIKE ? OR preorders.no_hp LIKE ? OR preorder_items.product_name_snapshot LIKE ?", like, like, like, like, like).
 			Distinct()
 	}
 
@@ -323,6 +327,7 @@ func (p PreorderController) UpdatePreorder(c *gin.Context) {
 		}
 
 		preorder.NamaCustomer = req.NamaCustomer
+		preorder.NamaPerusahaan = req.NamaPerusahaan
 		preorder.Email = req.Email
 		preorder.Alamat = req.Alamat
 		preorder.NoHP = req.NoHP
@@ -805,6 +810,14 @@ func preorderInvoiceFilename(preorder models.Preorder) string {
 	return fmt.Sprintf("invoice_%s.pdf", sanitizeIdentifier(preorder.PONumber))
 }
 
+func displayDash(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "-"
+	}
+	return value
+}
+
 func buildPreorderPDF(preorder models.Preorder) *gofpdf.Fpdf {
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(10, 10, 10)
@@ -833,6 +846,7 @@ func buildPreorderPDF(preorder models.Preorder) *gofpdf.Fpdf {
 	})
 	drawInfoRow(pdf, "Customer Details", []string{
 		fmt.Sprintf("Name: %s", preorder.NamaCustomer),
+		fmt.Sprintf("Company: %s", displayDash(preorder.NamaPerusahaan)),
 		fmt.Sprintf("Email: %s", preorder.Email),
 		fmt.Sprintf("Phone: %s", preorder.NoHP),
 		fmt.Sprintf("Address: %s", preorder.Alamat),
@@ -1034,7 +1048,7 @@ func drawInfoRow(pdf *gofpdf.Fpdf, title string, lines []string) {
 }
 
 func drawPreorderItemsTable(pdf *gofpdf.Fpdf, items []models.PreorderItem) {
-	widths := []float64{7, 24, 42, 23, 14, 20, 17, 21, 22}
+	widths := []float64{7, 28, 38, 23, 14, 20, 17, 21, 22}
 	headers := []string{"NO", "Model", "Deskripsi Produk", "Picture", "Quantity", "Unit Price", "Discount", "After Discount", "Total Price"}
 	aligns := []string{"C", "L", "L", "C", "C", "R", "R", "R", "R"}
 
@@ -1042,17 +1056,14 @@ func drawPreorderItemsTable(pdf *gofpdf.Fpdf, items []models.PreorderItem) {
 
 	pdf.SetFont("Arial", "", 6)
 	for i, item := range items {
-		description := item.ProductDescriptionSnapshot
-		if strings.TrimSpace(description) == "" {
-			description = "-"
-		}
+		descriptionBullets := productDescriptionBullets(item.ProductDescriptionSnapshot)
 		qtyText := fmt.Sprintf("%d", item.Qty)
 		unitDiscount := int64(math.Round(float64(item.UnitPrice) * item.DiscountPercent / 100))
 		afterDiscount := item.UnitPrice - unitDiscount
 		cells := []string{
 			fmt.Sprintf("%d", i+1),
 			item.ProductNameSnapshot,
-			description,
+			productDescriptionCellText(descriptionBullets),
 			"",
 			qtyText,
 			formatRupiah(item.UnitPrice),
@@ -1071,7 +1082,9 @@ func drawPreorderItemsTable(pdf *gofpdf.Fpdf, items []models.PreorderItem) {
 		y := pdf.GetY()
 		for j, cell := range cells {
 			pdf.Rect(x, y, widths[j], rowH, "D")
-			if j == 3 {
+			if j == 2 {
+				drawProductDescriptionBullets(pdf, descriptionBullets, x+1, y+1.2, widths[j]-2, 3.4)
+			} else if j == 3 {
 				drawProductImage(pdf, item.ProductPhotoSnapshot, x+2, y+2, widths[j]-4, rowH-4)
 			} else {
 				pdf.SetXY(x+1, y+1.2)
@@ -1081,6 +1094,72 @@ func drawPreorderItemsTable(pdf *gofpdf.Fpdf, items []models.PreorderItem) {
 			pdf.SetXY(x, y)
 		}
 		pdf.SetXY(10, y+rowH)
+	}
+}
+
+func productDescriptionBullets(description string) []string {
+	description = strings.ReplaceAll(description, "\r\n", "\n")
+	description = strings.ReplaceAll(description, "\r", "\n")
+
+	var bullets []string
+	for _, line := range strings.Split(description, "\n") {
+		line = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(line), "*-"))
+		if line != "" {
+			bullets = append(bullets, line)
+		}
+	}
+
+	if len(bullets) == 1 {
+		parts := strings.Split(bullets[0], ". ")
+		if len(parts) > 1 {
+			bullets = bullets[:0]
+			for i, part := range parts {
+				part = strings.TrimSpace(part)
+				if part == "" {
+					continue
+				}
+				if i < len(parts)-1 && !strings.HasSuffix(part, ".") {
+					part += "."
+				}
+				bullets = append(bullets, part)
+			}
+		}
+	}
+
+	if len(bullets) == 0 {
+		return []string{"-"}
+	}
+	return bullets
+}
+
+func productDescriptionCellText(bullets []string) string {
+	lines := make([]string, 0, len(bullets))
+	for _, bullet := range bullets {
+		lines = append(lines, "- "+bullet)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func drawProductDescriptionBullets(pdf *gofpdf.Fpdf, bullets []string, x, y, width, lineH float64) {
+	bulletW := 3.0
+	textW := width - bulletW
+	pdf.SetFont("Arial", "", 6)
+	pdf.SetTextColor(0, 0, 0)
+
+	cursorY := y
+	for _, bullet := range bullets {
+		lines := pdf.SplitLines([]byte(bullet), textW)
+		if len(lines) == 0 {
+			lines = [][]byte{[]byte("-")}
+		}
+		pdf.SetXY(x, cursorY)
+		pdf.CellFormat(bulletW, lineH, "-", "", 0, "L", false, 0, "")
+		for _, line := range lines {
+			pdf.SetXY(x+bulletW, cursorY)
+			pdf.CellFormat(textW, lineH, string(line), "", 0, "L", false, 0, "")
+			cursorY += lineH
+		}
+		cursorY += 0.6
 	}
 }
 

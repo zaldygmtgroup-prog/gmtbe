@@ -7,6 +7,7 @@ CREATE TABLE preorders (
   po_number VARCHAR(50) NOT NULL UNIQUE,
   id_agent BIGINT UNSIGNED NOT NULL,
   nama_customer VARCHAR(255) NOT NULL,
+  nama_perusahaan VARCHAR(255) NULL,
   email VARCHAR(255) NOT NULL,
   alamat TEXT NOT NULL,
   no_hp VARCHAR(50) NOT NULL,

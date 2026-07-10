@@ -35,6 +35,7 @@ type Preorder struct {
 	IDAgent          uint           `gorm:"column:id_agent;index;not null" json:"id_agent"`
 	Agent            *User          `gorm:"foreignKey:IDAgent;constraint:OnDelete:CASCADE" json:"agent,omitempty"`
 	NamaCustomer     string         `gorm:"size:255;not null;column:nama_customer" json:"nama_customer"`
+	NamaPerusahaan   string         `gorm:"size:255;column:nama_perusahaan" json:"nama_perusahaan,omitempty"`
 	Email            string         `gorm:"size:255;not null" json:"email"`
 	Alamat           string         `gorm:"type:text;not null" json:"alamat"`
 	NoHP             string         `gorm:"size:50;not null;column:no_hp" json:"no_hp"`

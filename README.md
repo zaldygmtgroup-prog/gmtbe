@@ -378,6 +378,7 @@ Body:
   "id_agent": 2,
   "qty": 3,
   "nama_customer": "Customer A",
+  "nama_perusahaan": "PT Customer A",
   "email": "customer@example.com",
   "alamat": "Jl. Customer No. 1",
   "no_hp": "081234567890",

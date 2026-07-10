@@ -506,6 +506,7 @@ Body:
 ```json
 {
   "nama_customer": "PT Cahaya Eventindo",
+  "nama_perusahaan": "PT Cahaya Eventindo",
   "email": "procurement@cahayaevent.id",
   "alamat": "Jl. Gatot Subroto No. 12",
   "no_hp": "081234567890",

@@ -330,6 +330,7 @@ Body:
 ```json
 {
   "nama_customer": "PT Cahaya Eventindo",
+  "nama_perusahaan": "PT Cahaya Eventindo",
   "email": "procurement@cahayaevent.id",
   "alamat": "Jl. Gatot Subroto No. 12",
   "no_hp": "081234567890",
@@ -750,6 +751,7 @@ Response:
       "po_number": "INV/GMT/2026/06/0001",
       "status": "in_review",
       "nama_customer": "PT Cahaya Eventindo",
+      "nama_perusahaan": "PT Cahaya Eventindo",
       "email": "procurement@cahayaevent.id",
       "no_hp": "081234567890",
       "alamat": "Jl. Gatot Subroto No. 12",
