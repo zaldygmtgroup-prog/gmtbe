@@ -974,16 +974,18 @@ archived
 ```text
 GET /api/articles
 GET /api/articles?search=lampu&status=draft&page=1&limit=20
+GET /api/articles?category=Media
 ```
 
 Query opsional:
 
-| Parameter | Deskripsi                          | Default |
-| --------- | ---------------------------------- | ------- |
-| `search`  | Cari berdasarkan title atau excerpt | -       |
-| `status`  | Filter berdasarkan status          | -       |
-| `page`    | Halaman                           | 1       |
-| `limit`   | Jumlah per halaman                 | 20      |
+| Parameter  | Deskripsi                                      | Default |
+| ---------- | ---------------------------------------------- | ------- |
+| `search`   | Cari berdasarkan title, excerpt, atau category | -       |
+| `category` | Filter berdasarkan category artikel            | -       |
+| `status`   | Filter berdasarkan status                      | -       |
+| `page`     | Halaman                                        | 1       |
+| `limit`    | Jumlah per halaman                             | 20      |
 
 Response:
 
@@ -994,6 +996,7 @@ Response:
       "id": 1,
       "title": "Judul artikel",
       "slug": "judul-artikel",
+      "category": "Media",
       "excerpt": "Ringkasan artikel",
       "content": "<h1>Konten HTML</h1>",
       "featured_image": "https://url-gambar.com/image.jpg",
@@ -1035,6 +1038,7 @@ Response:
     "id": 1,
     "title": "Judul artikel",
     "slug": "judul-artikel",
+    "category": "Media",
     "excerpt": "Ringkasan artikel",
     "content": "<h1>Konten HTML lengkap</h1>",
     "featured_image": "https://url-gambar.com/image.jpg",
@@ -1098,6 +1102,7 @@ Response sukses (201):
     "id": 1,
     "title": "Judul artikel",
     "slug": "judul-artikel",
+    "category": "Media",
     "status": "draft"
   }
 }
@@ -1155,6 +1160,7 @@ Body:
     {
       "title": "Judul artikel 1",
       "slug": "judul-artikel-1",
+      "category": "Media",
       "excerpt": "Ringkasan",
       "content": "<h1>Konten HTML</h1>",
       "featured_image": "https://...",
@@ -1185,6 +1191,7 @@ Response (201):
       "id": 1,
       "title": "Judul artikel 1",
       "slug": "judul-artikel-1",
+      "category": "Media",
       "status": "draft"
     }
   ],

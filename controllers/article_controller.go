@@ -31,7 +31,7 @@ func NewArticleController(cfg config.Config, db *gorm.DB) *ArticleController {
 // ---------------------------------------------------------------------------
 
 type articleRequest struct {
-	Title         string              `json:"title"          binding:"required,max=500"`
+	Title         string                  `json:"title"          binding:"required,max=500"`
 	Slug          string                  `json:"slug"           binding:"required,max=500"`
 	Category      string                  `json:"category"       binding:"omitempty,max=255"`
 	Excerpt       string                  `json:"excerpt"`
@@ -47,10 +47,11 @@ type articleRequest struct {
 }
 
 type articleSummary struct {
-	ID     uint   `json:"id"`
-	Title  string `json:"title"`
-	Slug   string `json:"slug"`
-	Status string `json:"status"`
+	ID       uint   `json:"id"`
+	Title    string `json:"title"`
+	Slug     string `json:"slug"`
+	Category string `json:"category"`
+	Status   string `json:"status"`
 }
 
 type bulkImportRequest struct {
@@ -105,7 +106,7 @@ func applyArticleRequest(a *models.Article, req *articleRequest) {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/articles  — list with search, status filter, and pagination
+// GET /api/articles  — list with search, category/status filters, and pagination
 // ---------------------------------------------------------------------------
 
 func (ac *ArticleController) ListArticles(c *gin.Context) {
@@ -122,7 +123,10 @@ func (ac *ArticleController) ListArticles(c *gin.Context) {
 
 	if search := c.Query("search"); search != "" {
 		like := "%" + search + "%"
-		query = query.Where("title LIKE ? OR excerpt LIKE ?", like, like)
+		query = query.Where("title LIKE ? OR excerpt LIKE ? OR category LIKE ?", like, like, like)
+	}
+	if category := c.Query("category"); category != "" {
+		query = query.Where("category = ?", category)
 	}
 	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", status)
@@ -208,10 +212,11 @@ func (ac *ArticleController) CreateArticle(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Article created",
 		"article": articleSummary{
-			ID:     article.ID,
-			Title:  article.Title,
-			Slug:   article.Slug,
-			Status: article.Status,
+			ID:       article.ID,
+			Title:    article.Title,
+			Slug:     article.Slug,
+			Category: article.Category,
+			Status:   article.Status,
 		},
 	})
 }
@@ -322,10 +327,11 @@ func (ac *ArticleController) ImportArticles(c *gin.Context) {
 			}
 
 			created = append(created, articleSummary{
-				ID:     article.ID,
-				Title:  article.Title,
-				Slug:   article.Slug,
-				Status: article.Status,
+				ID:       article.ID,
+				Title:    article.Title,
+				Slug:     article.Slug,
+				Category: article.Category,
+				Status:   article.Status,
 			})
 		}
 		return nil
